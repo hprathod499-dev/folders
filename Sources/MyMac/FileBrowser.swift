@@ -181,7 +181,7 @@ final class FileBrowser: ObservableObject, Identifiable {
         switch location {
         case .home: return "Home"
         case .gallery: return "Gallery"
-        case .thisMac: return "This PC"
+        case .thisMac: return "This Mac"
         case .folder(let url):
             if let place = Place.special(for: url) { return place.name }
             if let volume = volumes.first(where: { $0.url == url.normalizedFolder }) { return volume.displayName }
@@ -297,7 +297,7 @@ final class FileBrowser: ObservableObject, Identifiable {
                 .filter { $0.url.path == "/" || path == $0.url.path || path.hasPrefix($0.url.path + "/") }
                 .max { $0.url.path.count < $1.url.path.count }
             root = volume?.url ?? URL(fileURLWithPath: "/")
-            crumbs.append(Crumb(name: "This PC", location: .thisMac))
+            crumbs.append(Crumb(name: "This Mac", location: .thisMac))
             if let volume, volume.isDiskImage {
                 // This PC › Macintosh HD (C:) › Claude
                 let system = volumes.first(where: \.isInternal)

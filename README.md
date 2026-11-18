@@ -1,26 +1,26 @@
 # Folders
 
-**A Windows-style file manager for Mac.** If you've switched from Windows and miss File Explorer, Folders gives you the layout and habits you already know: This PC, tabs, a navigation pane, the Windows 11 right-click menu, and Ctrl+C / Ctrl+V for files (⌘C / ⌘V on a Mac).
+**A file manager for Mac that works the way PC users expect.** If you've switched from a PC, Folders gives you the habits you already know (a "This Mac" drive view, tabs, a navigation pane, a full right-click menu, and Ctrl+C / Ctrl+V-style copy and paste for files) in its own warm, amber design.
 
-Folders is an independent project. It isn't made by, affiliated with, or endorsed by Microsoft or Apple.
+Folders is an independent project with its own design and code. It isn't made by, affiliated with, or endorsed by Microsoft or Apple. Windows is a trademark of Microsoft Corporation; Mac and macOS are trademarks of Apple Inc. They're mentioned only to describe who the app is for.
 
 ## Features
 
-- **This PC** with your Mac's disk shown as **Macintosh HD (C:)**, its free space bar, and opened disk images inside it
+- **This Mac**, showing your disk as **Macintosh HD (C:)** with a free-space bar and any opened disk images inside it
 - **Tabs**: new, duplicate, close, close others, close to the right, ⌃Tab to switch
-- **Navigation pane**: Home, Gallery, iCloud Drive, pinned Quick access folders, This PC tree
-- **Address bar** with clickable path, plus typing paths, including Windows ones like `C:\Users`
+- **Navigation pane** with Home, Gallery, iCloud Drive, your **Pinned** folders and a This Mac tree
+- **Address bar** with a clickable path; you can type paths too, including drive-letter forms like `C:\Users`
 - **8 views**: Extra large, Large, Medium and Small icons, List, Details, Tiles, Content, plus Compact view
-- **Sort and group** by name, date, type and size (Downloads groups by date, like Windows)
-- **Windows 11 right-click menu** with the Cut / Copy / Rename / Share / Delete row, flyouts and *Show more options*
+- **Sort and group** by name, date, type and size (Downloads groups by date)
+- **Right-click menu** with a quick-action row (Cut, Copy, Rename, Share, Delete), submenus and *More options*
 - **Cut, copy, paste** with progress and a *Replace or Skip Files* dialog
 - **Undo** for rename, move, copy, new and delete
 - **Delete** to the Trash, or **Shift+Delete** for permanent delete
 - **Compress to ZIP / Extract All**, **Rotate** pictures, **Set as desktop background**, **Copy as path**, **Open in Terminal**
-- **Search** in the current folder, or **Search This PC** across the whole Mac with Spotlight
+- **Search** in the current folder, or **Search This Mac** across the whole Mac with Spotlight
 - **Details pane**, **Preview pane**, and **Space bar preview** (tap to open, hold to peek)
-- **Properties** for files, folders and drives, with a pie chart for disk space
-- **Dark and light themes**, sizes shown in MB / GB, Windows-style dates and names (`New folder (2)`, `Report - Copy.pdf`)
+- **Properties** for files, folders and drives, with a disk-space chart
+- **Dark and light themes**, sizes in MB / GB, and familiar names like `New folder (2)` and `Report - Copy.pdf`
 
 ## Install
 
@@ -43,7 +43,7 @@ You only need to do this once per version. The full source code is in this repos
 
 ## Keyboard shortcuts
 
-Windows' **Ctrl** is **⌘** on a Mac.
+A PC's **Ctrl** is **⌘** on a Mac.
 
 | Action | Shortcut |
 |---|---|

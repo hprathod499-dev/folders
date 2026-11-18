@@ -41,7 +41,7 @@ struct WinMenuEntry: Identifiable {
     var height: CGFloat {
         switch kind {
         case .separator: return 9
-        case .toolbar: return 44
+        case .toolbar: return 58
         default: return 32
         }
     }
@@ -54,6 +54,8 @@ struct WinToolButton: Identifiable {
     let help: String
     var enabled = true
     let action: () -> Void
+    /// Short label under the icon: the help text without its shortcut.
+    var title: String { help.components(separatedBy: " (").first ?? help }
 }
 
 // MARK: - Presenter
@@ -91,7 +93,7 @@ final class WinMenu: ObservableObject {
     static func height(of entries: [WinMenuEntry]) -> CGFloat { entries.reduce(8) { $0 + $1.height } }
 
     /// Opens the menu with its top-left corner at `point` (screen coordinates), like Windows.
-    /// `classic` is the longer list shown by "Show more options".
+    /// `classic` is the longer list shown by "More options".
     func show(_ entries: [WinMenuEntry], classic: [WinMenuEntry]? = nil, at point: NSPoint, in window: NSWindow?) {
         close()
         guard !entries.isEmpty else { return }
@@ -196,7 +198,7 @@ final class WinMenu: ObservableObject {
         }
     }
 
-    /// "Show more options": the classic (Windows 10 style) menu with every command.
+    /// "More options": the classic (Windows 10 style) menu with every command.
     func showMoreOptions() {
         let entries = classic
         let point = origin
@@ -233,7 +235,7 @@ final class FirstClickHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-/// The classic NSMenu used by "Show more options".
+/// The classic NSMenu used by "More options".
 enum ClassicMenu {
     final class Item: NSMenuItem {
         var handler: (() -> Void)?
@@ -282,11 +284,13 @@ enum ClassicMenu {
 
 // MARK: - Look (Windows 11)
 
+/// Folders' own menu style: warm panel, amber highlight, labelled quick actions.
 private enum MenuColors {
-    static let background = Theme.dynamic(0x2C2C2C, 0xF9F9F9)
-    static let border = Theme.dynamic(0xFFFFFF, 0x000000, 0.10, 0.10)
-    static let hover = Theme.dynamic(0xFFFFFF, 0x000000, 0.08, 0.05)
-    static let separator = Theme.dynamic(0xFFFFFF, 0x000000, 0.10, 0.08)
+    static let background = Theme.dynamic(0x262421, 0xFCFAF6)
+    static let border = Theme.dynamic(0xFFB224, 0x7A5A1E, 0.18, 0.18)
+    static let hover = Theme.dynamic(0xFFB224, 0xFFB224, 0.16, 0.22)
+    static let separator = Theme.dynamic(0xFFFFFF, 0x3A2A10, 0.08, 0.10)
+    static let chip = Theme.dynamic(0xFFFFFF, 0x3A2A10, 0.05, 0.05)
 }
 
 struct WinMenuWindowView: View {
@@ -324,12 +328,13 @@ struct WinMenuList: View {
                 case .separator:
                     Rectangle().fill(MenuColors.separator).frame(height: 1).padding(.vertical, 4)
                 case .toolbar(let buttons):
-                    HStack(spacing: 2) {
+                    HStack(spacing: 0) {
                         ForEach(buttons) { b in ToolbarIcon(button: b, menu: menu) }
-                        Spacer(minLength: 0)
                     }
+                    .padding(3)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(MenuColors.chip))
                     .padding(.horizontal, 6)
-                    .frame(height: 44)
+                    .frame(height: 58)
                     .onHover { if $0 && isRoot { menu.hover(entry, y: y) } }
                 default:
                     MenuLine(entry: entry, menu: menu, isSubOpen: menu.sub?.rowID == entry.id) {
@@ -339,9 +344,9 @@ struct WinMenuList: View {
             }
         }
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8).fill(MenuColors.background))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(MenuColors.border, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .background(RoundedRectangle(cornerRadius: 12).fill(MenuColors.background))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(MenuColors.border, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .shadow(color: .black.opacity(0.35), radius: 10, y: 4)
         .padding(1)
     }
@@ -354,12 +359,14 @@ private struct ToolbarIcon: View {
 
     var body: some View {
         Button { if button.enabled { menu.run(button.action) } } label: {
-            Image(systemName: button.symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(Theme.text)
-                .frame(width: 40, height: 34)
-                .background(RoundedRectangle(cornerRadius: 4).fill(hovering && button.enabled ? MenuColors.hover : .clear))
-                .contentShape(Rectangle())
+            VStack(spacing: 3) {
+                Image(systemName: button.symbol).font(.system(size: 14)).frame(height: 18)
+                Text(button.title).font(.system(size: 10))
+            }
+            .foregroundStyle(hovering && button.enabled ? Theme.accent : Theme.text)
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(RoundedRectangle(cornerRadius: 6).fill(hovering && button.enabled ? MenuColors.hover : .clear))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .opacity(button.enabled ? 1 : 0.35)
@@ -527,7 +534,7 @@ extension RightClickTargets {
 }
 
 extension View {
-    /// Windows 11 right-click menu. `classic` is what "Show more options" lists (defaults to the same items).
+    /// Windows 11 right-click menu. `classic` is what "More options" lists (defaults to the same items).
     func winContextMenu(prepare: (() -> Void)? = nil,
                         _ build: @escaping () -> (main: [WinMenuEntry], classic: [WinMenuEntry]?)) -> some View {
         modifier(WinContextMenuModifier(prepare: prepare, build: build))

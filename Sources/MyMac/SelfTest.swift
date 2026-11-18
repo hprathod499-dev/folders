@@ -356,7 +356,7 @@ enum SelfTest {
         browser.go(to: .folder(URL(fileURLWithPath: "/Users")))
         let crumbs = browser.breadcrumbs.map(\.name)
         check("Path shows This PC › Macintosh HD (C:) › Users",
-              crumbs.count == 3 && crumbs[0] == "This PC" && crumbs[1].hasSuffix("(C:)") && crumbs[2] == "Users")
+              crumbs.count == 3 && crumbs[0] == "This Mac" && crumbs[1].hasSuffix("(C:)") && crumbs[2] == "Users")
         browser.go(to: .folder(URL(fileURLWithPath: "/")))
         browser.goUp()
         check("Up from C: goes to This PC", browser.location == .thisMac)

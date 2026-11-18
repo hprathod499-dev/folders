@@ -282,7 +282,7 @@ enum DiskImages {
     }
 }
 
-/// The standard user folders, with Windows-style colored icons.
+/// The standard user folders, with Folders' own amber icons.
 struct Place: Identifiable, Hashable {
     let name: String
     let symbol: String
@@ -295,12 +295,12 @@ struct Place: Identifiable, Hashable {
     static let standard: [Place] = {
         let fm = FileManager.default
         let wanted: [(String, String, Color, FileManager.SearchPathDirectory)] = [
-            ("Desktop", "menubar.dock.rectangle", Color(hex: 0x3AB0E8), .desktopDirectory),
-            ("Music", "music.note", Color(hex: 0xF0596B), .musicDirectory),
-            ("Downloads", "arrow.down.to.line", Color(hex: 0x3CC8A8), .downloadsDirectory),
-            ("Documents", "doc.text.fill", Color(hex: 0x9DB4CF), .documentDirectory),
-            ("Pictures", "photo.fill", Color(hex: 0x4FA3F7), .picturesDirectory),
-            ("Videos", "play.rectangle.fill", Color(hex: 0x9B6CF0), .moviesDirectory),
+            ("Desktop", "menubar.dock.rectangle", Color(hex: 0xF2A60C), .desktopDirectory),
+            ("Music", "music.note", Color(hex: 0xF2A60C), .musicDirectory),
+            ("Downloads", "arrow.down.circle.fill", Color(hex: 0xF2A60C), .downloadsDirectory),
+            ("Documents", "doc.text.fill", Color(hex: 0xF2A60C), .documentDirectory),
+            ("Pictures", "photo.fill", Color(hex: 0xF2A60C), .picturesDirectory),
+            ("Videos", "film.fill", Color(hex: 0xF2A60C), .moviesDirectory),
         ]
         return wanted.compactMap { name, symbol, color, dir in
             fm.urls(for: dir, in: .userDomainMask).first.map {

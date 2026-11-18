@@ -1,23 +1,26 @@
 import AppKit
 import SwiftUI
 
-/// Windows 11 Explorer colors, for dark and light mode.
+/// Folders' own colour scheme: warm graphite (dark) or warm paper (light) with an amber accent
+/// that matches the app icon.
 enum Theme {
-    static let strip = dynamic(0x141414, 0xE8E8E8)
-    static let chrome = dynamic(0x1C1C1C, 0xF7F7F7)
-    static let content = dynamic(0x191919, 0xFFFFFF)
-    static let field = dynamic(0x2B2B2B, 0xFFFFFF)
-    static let fieldBorder = dynamic(0x2B2B2B, 0xDADADA)
-    static let hover = dynamic(0xFFFFFF, 0xE5F3FF, 0.06, 1)
-    static let selected = dynamic(0xFFFFFF, 0xCCE8FF, 0.12, 1)
-    static let selectedHover = dynamic(0xFFFFFF, 0xB8DEFF, 0.16, 1)
-    static let divider = dynamic(0xFFFFFF, 0x000000, 0.08, 0.08)
-    static let text = dynamic(0xFFFFFF, 0x000000, 0.92, 0.9)
-    static let secondary = dynamic(0xFFFFFF, 0x000000, 0.62, 0.6)
-    static let tertiary = dynamic(0xFFFFFF, 0x000000, 0.35, 0.3)
-    static let accent = dynamic(0x60CDFF, 0x005FB8)
-    static let onAccent = dynamic(0x000000, 0xFFFFFF)
-    static let barTrack = dynamic(0xFFFFFF, 0x000000, 0.12, 0.1)
+    static let strip = dynamic(0x141312, 0xEAE6DF)
+    static let chrome = dynamic(0x1F1D1B, 0xF6F3EE)
+    static let content = dynamic(0x191817, 0xFFFFFF)
+    static let field = dynamic(0x2B2926, 0xFFFFFF)
+    static let fieldBorder = dynamic(0x3A3632, 0xDAD3C8)
+    static let hover = dynamic(0xFFFFFF, 0x7A5A1E, 0.06, 0.07)
+    static let selected = dynamic(0xFFB224, 0xFFB224, 0.16, 0.22)
+    static let selectedHover = dynamic(0xFFB224, 0xFFB224, 0.22, 0.30)
+    static let divider = dynamic(0xFFFFFF, 0x3A2A10, 0.08, 0.10)
+    static let text = dynamic(0xFFFFFF, 0x1E1A14, 0.92, 1)
+    static let secondary = dynamic(0xFFFFFF, 0x1E1A14, 0.60, 0.62)
+    static let tertiary = dynamic(0xFFFFFF, 0x1E1A14, 0.35, 0.32)
+    static let accent = dynamic(0xFFB224, 0xA75A00)
+    static let onAccent = dynamic(0x1A1206, 0xFFFFFF)
+    static let barTrack = dynamic(0xFFFFFF, 0x3A2A10, 0.12, 0.10)
+    /// Icon colour for places in the sidebar and title bar.
+    static let brand = Color(hex: 0xF2A60C)
     static let danger = Color(hex: 0xE5484D)
 
     static func dynamic(_ dark: UInt32, _ light: UInt32, _ darkAlpha: CGFloat = 1, _ lightAlpha: CGFloat = 1) -> Color {
@@ -159,21 +162,22 @@ struct TabStrip: View {
     }
 }
 
-/// Windows 11 caption buttons: Minimize, Maximize/Restore, Close (red on hover).
+/// Window buttons in Folders' own style: small round Minimize, Full screen and Close buttons.
 struct CaptionButtons: View {
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             CaptionButton(symbol: "minus", help: "Minimize", danger: false) {
                 NSApp.keyWindow?.miniaturize(nil)
             }
-            CaptionButton(symbol: "square", help: "Maximize", danger: false) {
+            CaptionButton(symbol: "arrow.up.left.and.arrow.down.right", help: "Full screen", danger: false) {
                 NSApp.keyWindow?.toggleFullScreen(nil)
             }
             CaptionButton(symbol: "xmark", help: "Close", danger: true) {
                 NSApp.keyWindow?.performClose(nil)
             }
         }
-        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.trailing, 10)
+        .frame(maxHeight: .infinity, alignment: .center)
     }
 }
 
@@ -187,11 +191,11 @@ struct CaptionButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: symbol == "square" ? 10 : 12, weight: .regular))
-                .foregroundStyle(hovering && danger ? Color.white : Theme.text)
-                .frame(width: 46, height: 32)
-                .background(hovering ? (danger ? Color(hex: 0xC42B1C) : Theme.hover) : Color.clear)
-                .contentShape(Rectangle())
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(hovering ? (danger ? Color.white : Theme.onAccent) : Theme.secondary)
+                .frame(width: 26, height: 26)
+                .background(Circle().fill(hovering ? (danger ? Theme.danger : Theme.accent) : Theme.field))
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
@@ -418,7 +422,7 @@ struct AddressBar: View {
             if let cloud = Place.iCloudDrive, url.path.hasPrefix(cloud.path) {
                 Glyph(symbol: "icloud", color: Theme.accent, size: 18)
             } else {
-                Glyph(symbol: "desktopcomputer", color: Theme.text, size: 18)
+                Glyph(symbol: "laptopcomputer", color: Theme.brand, size: 18)
             }
         } else {
             LocationIcon(location: browser.location, size: 18)
@@ -639,7 +643,7 @@ struct CommandBar: View {
                     MenuSeparator()
                 }
                 if let url = browser.currentURL {
-                    MenuRow(title: PinStore.shared.isPinned(url) ? "Unpin from Quick access" : "Pin to Quick access",
+                    MenuRow(title: PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar",
                             symbol: "pin") { close(); PinStore.shared.toggle(url) }
                     MenuSeparator()
                 }
@@ -954,7 +958,7 @@ struct ProgressCard: View {
             Text("\(Int(progress.fraction * 100))% complete")
                 .font(.system(size: 16, weight: .semibold))
             ProgressView(value: progress.fraction)
-                .tint(Color(hex: 0x16C60C))
+                .tint(Theme.accent)
             Text(progress.currentName.isEmpty ? "Calculating…" : "Name: \(progress.currentName)")
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.secondary)
@@ -986,44 +990,35 @@ struct Glyph: View {
     }
 }
 
-/// The yellow Windows-style folder.
+/// Folders' own folder icon (same shape as the app icon): a darker back panel with a tab
+/// and a lighter front panel, drawn here at any size.
 struct FolderIcon: View {
     var size: CGFloat = 16
 
     var body: some View {
-        Image(systemName: "folder.fill")
-            .resizable()
-            .scaledToFit()
-            .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD866), Color(hex: 0xF4B433)],
-                                            startPoint: .top, endPoint: .bottom))
-            .frame(width: size, height: size)
-    }
-}
-
-/// Windows 11 Home icon: light grey house, dark doorway, orange roof.
-struct HomeIcon: View {
-    var size: CGFloat = 16
-
-    var body: some View {
         Canvas { ctx, canvas in
-            let k = canvas.width / 16
-            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
-            var body = Path()
-            body.move(to: p(2.6, 8.4)); body.addLine(to: p(8, 3.4)); body.addLine(to: p(13.4, 8.4))
-            body.addLine(to: p(13.4, 13.4)); body.addQuadCurve(to: p(12.6, 14.2), control: p(13.4, 14.2))
-            body.addLine(to: p(3.4, 14.2)); body.addQuadCurve(to: p(2.6, 13.4), control: p(2.6, 14.2))
-            body.closeSubpath()
-            ctx.fill(body, with: .linearGradient(Gradient(colors: [Color(hex: 0xF4F4F4), Color(hex: 0xC9C9C9)]),
-                                                 startPoint: p(8, 4), endPoint: p(8, 14)))
-            var door = Path()
-            door.addRoundedRect(in: CGRect(x: 6.5 * k, y: 9.6 * k, width: 3 * k, height: 4.6 * k),
-                                cornerSize: CGSize(width: 1.2 * k, height: 1.2 * k))
-            ctx.fill(door, with: .color(Color(hex: 0x3A3A3A)))
-            var roof = Path()
-            roof.move(to: p(1.6, 8.6)); roof.addLine(to: p(8, 2.5)); roof.addLine(to: p(14.4, 8.6))
-            ctx.stroke(roof, with: .linearGradient(Gradient(colors: [Color(hex: 0xFFC24D), Color(hex: 0xE5762A)]),
-                                                   startPoint: p(8, 2.5), endPoint: p(8, 8.6)),
-                       style: StrokeStyle(lineWidth: 2.1 * k, lineCap: .round, lineJoin: .round))
+            let w = canvas.width, h = canvas.height
+            let top = h * 0.16, bottom = h * 0.86, left = w * 0.06, right = w * 0.94
+            let r = w * 0.09
+            var back = Path()
+            back.move(to: CGPoint(x: left, y: top + r))
+            back.addQuadCurve(to: CGPoint(x: left + r, y: top), control: CGPoint(x: left, y: top))
+            back.addLine(to: CGPoint(x: w * 0.40, y: top))
+            back.addQuadCurve(to: CGPoint(x: w * 0.50, y: top + h * 0.09), control: CGPoint(x: w * 0.46, y: top))
+            back.addLine(to: CGPoint(x: right - r, y: top + h * 0.09))
+            back.addQuadCurve(to: CGPoint(x: right, y: top + h * 0.09 + r), control: CGPoint(x: right, y: top + h * 0.09))
+            back.addLine(to: CGPoint(x: right, y: bottom - r))
+            back.addQuadCurve(to: CGPoint(x: right - r, y: bottom), control: CGPoint(x: right, y: bottom))
+            back.addLine(to: CGPoint(x: left + r, y: bottom))
+            back.addQuadCurve(to: CGPoint(x: left, y: bottom - r), control: CGPoint(x: left, y: bottom))
+            back.closeSubpath()
+            ctx.fill(back, with: .color(Color(hex: 0xD98A06)))
+            let front = Path(roundedRect: CGRect(x: left, y: top + h * 0.22, width: right - left,
+                                                 height: bottom - top - h * 0.22),
+                             cornerRadius: r)
+            ctx.fill(front, with: .linearGradient(Gradient(colors: [Color(hex: 0xFFCE4A), Color(hex: 0xF5AE1A)]),
+                                                  startPoint: CGPoint(x: 0, y: top + h * 0.22),
+                                                  endPoint: CGPoint(x: 0, y: bottom)))
         }
         .frame(width: size, height: size)
     }
@@ -1035,9 +1030,9 @@ struct LocationIcon: View {
 
     var body: some View {
         switch location {
-        case .home: HomeIcon(size: size)
-        case .gallery: Glyph(symbol: "photo.on.rectangle.angled", color: Color(hex: 0x4FA3F7), size: size)
-        case .thisMac: Glyph(symbol: "desktopcomputer", color: Color(hex: 0x4FA3F7), size: size)
+        case .home: Glyph(symbol: "house.fill", color: Theme.brand, size: size)
+        case .gallery: Glyph(symbol: "photo.stack.fill", color: Theme.brand, size: size)
+        case .thisMac: Glyph(symbol: "laptopcomputer", color: Theme.brand, size: size)
         case .folder(let url): FolderGlyph(url: url, size: size)
         }
     }
@@ -1052,7 +1047,7 @@ struct FolderGlyph: View {
         if let place = Place.special(for: folder) {
             Glyph(symbol: place.symbol, color: place.color, size: size)
         } else if folder == Place.iCloudDrive {
-            Glyph(symbol: "icloud.fill", color: Color(hex: 0x4FA3F7), size: size)
+            Glyph(symbol: "icloud.fill", color: Theme.brand, size: size)
         } else if folder.path == "/" {
             Glyph(symbol: "internaldrive.fill", color: Color(hex: 0x9AA6B2), size: size)
         } else if DiskImages.imageFile(forMountPoint: folder.path) != nil {

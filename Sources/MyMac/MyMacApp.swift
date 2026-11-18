@@ -233,7 +233,7 @@ struct AppCommands: Commands {
             Button("Home") { browser.go(to: .home) }
                 .keyboardShortcut("h", modifiers: [.command, .shift])
             Button("Gallery") { browser.go(to: .gallery) }
-            Button("This PC") { browser.go(to: .thisMac) }
+            Button("This Mac") { browser.go(to: .thisMac) }
             ForEach(Place.standard) { place in
                 Button(place.name) { browser.go(to: .folder(place.url)) }
             }

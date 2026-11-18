@@ -226,8 +226,8 @@ struct MultiProperties: View {
 struct DriveProperties: View {
     let volume: VolumeInfo
     @Environment(\.dismiss) private var dismiss
-    private let usedColor = Color(hex: 0x1A86D9)
-    private let freeColor = Color(hex: 0xB9B9B9)
+    private let usedColor = Color(hex: 0xF2A60C)
+    private let freeColor = Color(hex: 0x8A8178)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -437,7 +437,7 @@ struct OptionsView: View {
             }
             GroupBox("Privacy") {
                 HStack {
-                    Text("Clear File Explorer history")
+                    Text("Clear recent folders")
                     Spacer()
                     Button(cleared ? "Cleared" : "Clear") {
                         PinStore.shared.clearHistory()

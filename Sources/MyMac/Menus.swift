@@ -32,7 +32,7 @@ enum Menus {
             main += [
                 .item("Open", "folder", shortcut: "↩") { browser.open(urls) },
                 .item("Open in new tab", "plus.rectangle.on.rectangle") { AppState.shared.newTab(.folder(first)) },
-                .item(PinStore.shared.isPinned(first) ? "Unpin from Quick access" : "Pin to Quick access", "pin") {
+                .item(PinStore.shared.isPinned(first) ? "Unpin from sidebar" : "Pin to sidebar", "pin") {
                     PinStore.shared.toggle(first)
                 },
             ]
@@ -85,7 +85,7 @@ enum Menus {
         }
         classic += [.separator]
         if allFolders {
-            classic.append(.item(PinStore.shared.isPinned(first) ? "Unpin from Quick access" : "Pin to Quick access") {
+            classic.append(.item(PinStore.shared.isPinned(first) ? "Unpin from sidebar" : "Pin to sidebar") {
                 PinStore.shared.toggle(first)
             })
         }
@@ -118,7 +118,7 @@ enum Menus {
     }
 
     private static var showMore: WinMenuEntry {
-        .item("Show more options", "arrow.up.forward.square") { WinMenu.shared.showMoreOptions() }
+        .item("More options", "arrow.up.forward.square") { WinMenu.shared.showMoreOptions() }
     }
 
     // MARK: Empty space in a folder
@@ -161,7 +161,7 @@ enum Menus {
                 .separator,
                 .submenu("New", nil, newEntries(browser)),
                 .separator,
-                .item(PinStore.shared.isPinned(url) ? "Unpin from Quick access" : "Pin to Quick access") { PinStore.shared.toggle(url) },
+                .item(PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar") { PinStore.shared.toggle(url) },
                 .item("Open in Terminal") { browser.openInTerminal(url) },
                 .item("Open in Finder") { NSWorkspace.shared.open(url) },
                 .separator,
@@ -219,7 +219,7 @@ enum Menus {
             ]),
             .item("Open", "folder", shortcut: "↩") { browser.go(to: .folder(url)) },
             .item("Open in new tab", "plus.rectangle.on.rectangle") { AppState.shared.newTab(.folder(url)) },
-            .item(PinStore.shared.isPinned(url) ? "Unpin from Quick access" : "Pin to Quick access", "pin") {
+            .item(PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar", "pin") {
                 PinStore.shared.toggle(url)
             },
             .item("Compress to ZIP file", "doc.zipper") { browser.compress([url]) },
@@ -234,7 +234,7 @@ enum Menus {
             .item("Open") { browser.go(to: .folder(url)) },
             .item("Open in new tab") { AppState.shared.newTab(.folder(url)) },
             .separator,
-            .item(PinStore.shared.isPinned(url) ? "Unpin from Quick access" : "Pin to Quick access") { PinStore.shared.toggle(url) },
+            .item(PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar") { PinStore.shared.toggle(url) },
             .item("Copy as path") { browser.copyPath([url]) },
             .item("Show in Finder") { browser.revealInFinder([url]) },
             .separator,
@@ -249,7 +249,7 @@ enum Menus {
         var main: [WinMenuEntry] = [
             .item("Open", "internaldrive", shortcut: "↩") { browser.go(to: .folder(volume.url)) },
             .item("Open in new tab", "plus.rectangle.on.rectangle") { AppState.shared.newTab(.folder(volume.url)) },
-            .item(PinStore.shared.isPinned(volume.url) ? "Unpin from Quick access" : "Pin to Quick access", "pin") {
+            .item(PinStore.shared.isPinned(volume.url) ? "Unpin from sidebar" : "Pin to sidebar", "pin") {
                 PinStore.shared.toggle(volume.url)
             },
         ]

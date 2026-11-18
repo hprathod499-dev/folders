@@ -165,7 +165,7 @@ struct ThisPCNode: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            SidebarRow(title: "This PC", icon: AnyView(LocationIcon(location: .thisMac)), location: .thisMac,
+            SidebarRow(title: "This Mac", icon: AnyView(LocationIcon(location: .thisMac)), location: .thisMac,
                        expandable: true, expanded: expanded) { expanded.toggle() }
             if expanded {
                 // Only real drives here; disk images appear inside Macintosh HD (C:).
@@ -1130,7 +1130,7 @@ struct HomeView: View {
 
     private var quickAccess: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(title: "Quick access")
+            SectionTitle(title: "Pinned")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230, maximum: 280), spacing: 6)],
                       alignment: .leading, spacing: 6) {
                 ForEach(pins.pinned, id: \.self) { url in
@@ -1143,7 +1143,7 @@ struct HomeView: View {
     private var detailsLayout: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                SectionTitle(title: "Quick access")
+                SectionTitle(title: "Pinned")
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 230, maximum: 280), spacing: 6)],
                           alignment: .leading, spacing: 6) {
                     ForEach(pins.pinned, id: \.self) { url in
