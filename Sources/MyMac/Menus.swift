@@ -24,7 +24,7 @@ enum Menus {
                 WinToolButton(symbol: "doc.on.doc", help: "Copy (⌘C)") { browser.copy(urls) },
                 WinToolButton(symbol: "character.cursor.ibeam", help: "Rename (F2)", enabled: single) { browser.beginRename(first) },
                 WinToolButton(symbol: "square.and.arrow.up", help: "Share") { WinMenu.shared.share(list) },
-                WinToolButton(symbol: "trash", help: "Delete (⌘⌫)") { browser.trash(urls) },
+                WinToolButton(symbol: "trash", help: "Delete (⌘⌫)") { browser.requestTrash(urls) },
             ]),
         ]
 
@@ -32,6 +32,9 @@ enum Menus {
             main += [
                 .item("Open", "folder", shortcut: "↩") { browser.open(urls) },
                 .item("Open in new tab", "plus.rectangle.on.rectangle") { AppState.shared.newTab(.folder(first)) },
+                .item("Paste into folder", "doc.on.clipboard", enabled: browser.canPaste(into: first)) {
+                    browser.paste(into: first)
+                },
                 .item(PinStore.shared.isPinned(first) ? "Unpin from sidebar" : "Pin to sidebar", "pin") {
                     PinStore.shared.toggle(first)
                 },
@@ -72,6 +75,7 @@ enum Menus {
         var classic: [WinMenuEntry] = [.item("Open") { browser.open(urls) }]
         if isFolder {
             classic.append(.item("Open in new tab") { AppState.shared.newTab(.folder(first)) })
+            classic.append(.item("Paste into folder", enabled: browser.canPaste(into: first)) { browser.paste(into: first) })
         } else if single {
             classic.append(openWith(browser, first))
         }
@@ -99,7 +103,7 @@ enum Menus {
             .item("Copy") { browser.copy(urls) },
             .separator,
             .item("Rename", enabled: single) { browser.beginRename(first) },
-            .item("Delete") { browser.trash(urls) },
+            .item("Delete") { browser.requestTrash(urls) },
             .item("Delete permanently…") { browser.requestPermanentDelete(urls) },
             .separator,
             .item("Properties") { browser.showProperties(urls) },

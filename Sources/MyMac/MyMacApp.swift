@@ -64,27 +64,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Like Windows: closing the window quits the app.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// MYMAC_TEST_MINIMIZE=probe: tries each way of minimizing a normal window and reports which works.
     private func testMinimizeIfRequested(_ env: [String: String]) {
-        // MYMAC_TEST_MINIMIZE=windowed|fullscreen: puts the window in that state, presses Minimize, reports.
-        guard let mode = env["MYMAC_TEST_MINIMIZE"] else { return }
-        let wantFull = mode == "fullscreen"
+        guard env["MYMAC_TEST_MINIMIZE"] != nil else { return }
+        for name in [NSWindow.willMiniaturizeNotification, NSWindow.didMiniaturizeNotification,
+                     NSWindow.didDeminiaturizeNotification, NSWindow.willCloseNotification,
+                     NSWindow.didChangeOcclusionStateNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { note in
+                let w = note.object as? NSWindow
+                print("MINIMIZE event \(name.rawValue) \(w.map { String(describing: type(of: $0)) } ?? "") mini=\(w?.isMiniaturized ?? false) visible=\(w?.isVisible ?? false)")
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            NSApp.activate(ignoringOtherApps: true)
-            if let w = WindowActions.mainWindow, w.styleMask.contains(.fullScreen) != wantFull { w.toggleFullScreen(nil) }
+            if let w = WindowActions.mainWindow, w.styleMask.contains(.fullScreen) { w.toggleFullScreen(nil) }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
-            let w = WindowActions.mainWindow
-            AppDelegate.testedWindow = w
-            print("MINIMIZE \(mode) before: fullScreen=\(w?.styleMask.contains(.fullScreen) ?? false) active=\(NSApp.isActive) button=\(w?.standardWindowButton(.miniaturizeButton) != nil) windows=\(NSApp.windows.map { String(describing: type(of: $0)) })")
-            WindowActions.minimize()
+        let tries: [(String, @MainActor (NSWindow) -> Void)] = [
+            ("WindowActions.minimize", { _ in WindowActions.minimize() }),
+            ("WindowActions.minimize again", { _ in WindowActions.minimize() }),
+        ]
+        for (i, attempt) in tries.enumerated() {
+            let t = 5.0 + Double(i) * 4.0
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                guard let w = WindowActions.mainWindow ?? AppDelegate.testedWindow else { print("MINIMIZE no window"); return }
+                AppDelegate.testedWindow = w
+                print("MINIMIZE try \(attempt.0): active=\(NSApp.isActive) key=\(w.isKeyWindow) main=\(w.isMainWindow) full=\(w.styleMask.contains(.fullScreen)) behavior=\(w.collectionBehavior.rawValue) level=\(w.level.rawValue)")
+                attempt.1(w)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + t + 2.2) {
+                let w = AppDelegate.testedWindow
+                let gone = w?.isMiniaturized == true || NSApp.isHidden
+                print("MINIMIZE result \(attempt.0): \(gone ? "WORKS" : "no") (minimized=\(w?.isMiniaturized ?? false) appHidden=\(NSApp.isHidden)) visible=\(w?.isVisible ?? false) windows=\(NSApp.windows.map { "\(type(of: $0)):\($0.isVisible ? "v" : "-")\($0.isMiniaturized ? "m" : "")" })")
+                w?.deminiaturize(nil)
+                NSApp.unhide(nil)
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
-            let w = AppDelegate.testedWindow
-            print("MINIMIZE \(mode) result: miniaturized=\(w?.isMiniaturized ?? false) visible=\(w?.isVisible ?? false) mask=\(w?.styleMask.rawValue ?? 0) titled=\(w?.styleMask.contains(.titled) ?? false) delegate=\(w?.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
-            w?.deminiaturize(nil)
-            if w?.styleMask.contains(.fullScreen) == true { w?.toggleFullScreen(nil) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { exit(0) }
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0 + Double(tries.count) * 4.0 + 1) { exit(0) }
     }
 
     /// Development aid: MYMAC_SNAPSHOT=/path.png saves a picture of the window, then quits.
@@ -200,6 +214,13 @@ struct AppCommands: Commands {
             .disabled(browser.selection.isEmpty)
         }
 
+        // Window › Minimize (⌘M) uses the same fix as the minimize button.
+        CommandGroup(replacing: .windowSize) {
+            Button("Minimize") { WindowActions.minimize() }
+                .keyboardShortcut("m")
+            Button("Full Screen") { WindowActions.mainWindow?.toggleFullScreen(nil) }
+        }
+
         CommandGroup(replacing: .saveItem) {
             Button("Close Tab") { app.closeCurrent() }
                 .keyboardShortcut("w")
@@ -232,7 +253,7 @@ struct AppCommands: Commands {
             }
             .disabled(browser.selection.count != 1)
             Button("Delete") {
-                textEdit(#selector(NSResponder.deleteToBeginningOfLine(_:))) { browser.trash(browser.selection) }
+                textEdit(#selector(NSResponder.deleteToBeginningOfLine(_:))) { browser.requestTrash(browser.selection) }
             }
             .keyboardShortcut(.delete, modifiers: .command)
             Button("Delete Permanently…") { browser.requestPermanentDelete(browser.selection) }

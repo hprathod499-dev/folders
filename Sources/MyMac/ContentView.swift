@@ -137,6 +137,26 @@ struct BrowserView: View {
         } message: {
             Text("This can't be undone.")
         }
+        .confirmationDialog(trashTitle, isPresented: Binding(
+            get: { browser.confirmTrash != nil },
+            set: { if !$0 { browser.confirmTrash = nil } }
+        )) {
+            Button("Move to Trash", role: .destructive) { browser.performTrash() }
+            Button("Cancel", role: .cancel) { browser.confirmTrash = nil }
+        } message: {
+            Text("You can get \((browser.confirmTrash?.count ?? 1) == 1 ? "it" : "them") back from the Trash, or press ⌘Z to undo.")
+        }
+        .dialogSuppressionToggle("Don't ask me again", isSuppressed: Binding(
+            get: { !Prefs.shared.confirmDelete }, set: { Prefs.shared.confirmDelete = !$0 }))
+    }
+
+    private var trashTitle: String {
+        let urls = browser.confirmTrash ?? []
+        if urls.count == 1, let url = urls.first {
+            let kind = FileBrowser.isFolder(url) ? "folder" : "file"
+            return "Are you sure you want to move this \(kind) to the Trash?\n“\(url.lastPathComponent)”"
+        }
+        return "Are you sure you want to move these \(urls.count) items to the Trash?"
     }
 
     private var permanentDeleteTitle: String {
@@ -230,16 +250,32 @@ enum WindowActions {
     static func minimize() {
         guard let window = mainWindow else { return }
         guard window.styleMask.contains(.fullScreen) else {
-            miniaturize(window)
+            minimizeOrHide(window)
             return
         }
         var token: NSObjectProtocol?
         token = NotificationCenter.default.addObserver(forName: NSWindow.didExitFullScreenNotification,
                                                        object: window, queue: .main) { _ in
             if let token { NotificationCenter.default.removeObserver(token) }
-            MainActor.assumeIsolated { miniaturize(window) }
+            MainActor.assumeIsolated { minimizeOrHide(window) }
         }
         window.toggleFullScreen(nil)
+    }
+
+    /// Tries a real minimize; if macOS refuses (it does for this window style on some setups),
+    /// hides the app instead, which looks the same: the window goes away and the Dock icon brings it back.
+    private static func minimizeOrHide(_ window: NSWindow) {
+        var started = false
+        let token = NotificationCenter.default.addObserver(forName: NSWindow.willMiniaturizeNotification,
+                                                           object: window, queue: .main) { _ in started = true }
+        miniaturize(window)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+            NotificationCenter.default.removeObserver(token)
+            if !started && !window.isMiniaturized {
+                isMinimizing = false
+                NSApp.hide(nil)
+            }
+        }
     }
 
     /// macOS won't minimize a window whose own minimize button is hidden (we hide the Mac buttons
@@ -619,7 +655,7 @@ struct CommandBar: View {
             .disabled(!hasSelection)
             .help("Share")
             IconCommand(symbol: "trash", help: "Delete (⌘⌫)", enabled: hasSelection) {
-                browser.trash(browser.selection)
+                browser.requestTrash(browser.selection)
             }
 
             BarDivider()
@@ -984,6 +1020,7 @@ struct MenuSeparator: View {
 
 struct StatusBar: View {
     @EnvironmentObject private var browser: FileBrowser
+    @ObservedObject private var ops = FileOps.shared
 
     var body: some View {
         HStack(spacing: 10) {
@@ -998,11 +1035,18 @@ struct StatusBar: View {
                 Text("Searching…")
             }
             Spacer()
+            if let notice = FileOps.shared.notice {
+                Label(notice, systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(Theme.accent)
+                    .lineLimit(1)
+                    .transition(.opacity)
+            }
             ViewToggle(mode: .details, symbol: "list.bullet.rectangle", help: "Display information about each item in the window")
             ViewToggle(mode: .largeIcons, symbol: "rectangle.grid.2x2", help: "Display items by using large thumbnails")
         }
         .font(.system(size: 12))
         .foregroundStyle(Theme.secondary)
+        .animation(.easeOut(duration: 0.2), value: ops.notice)
         .padding(.horizontal, 14)
         .frame(height: 28)
         .background(Theme.content)

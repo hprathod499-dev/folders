@@ -405,9 +405,15 @@ enum CurrentAccent {
 /// Where settings are kept. Self-test and snapshot runs get their own throwaway copy,
 /// so they never change your theme, panes, Quick access or Recent folders.
 enum AppDefaults {
+    /// Self-test, snapshot and minimize-test runs.
+    static let isDevRun: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["MYMAC_SELFTEST"] != nil || env["MYMAC_SNAPSHOT"] != nil || env["MYMAC_TEST_MINIMIZE"] != nil
+    }()
+
     static let store: UserDefaults = {
         let env = ProcessInfo.processInfo.environment
-        guard env["MYMAC_SELFTEST"] != nil || env["MYMAC_SNAPSHOT"] != nil else { return .standard }
+        guard isDevRun else { return .standard }
         let name = "local.mymac.filemanager.devrun"
         UserDefaults.standard.removePersistentDomain(forName: name)
         return UserDefaults(suiteName: name) ?? .standard
@@ -426,6 +432,7 @@ final class Prefs: ObservableObject {
     @Published var compact: Bool { didSet { save(compact, "compact") } }
     @Published var showNavPane: Bool { didSet { save(showNavPane, "showNavPane") } }
     @Published var sidePane: SidePane { didSet { save(sidePane.rawValue, "sidePane") } }
+    @Published var confirmDelete: Bool { didSet { save(confirmDelete, "confirmDelete") } }
     @Published var accent: AccentColor { didSet { save(accent.rawValue, "accent"); CurrentAccent.value = accent } }
 
     private init() {
@@ -434,8 +441,12 @@ final class Prefs: ObservableObject {
         showExtensions = defaults.bool(forKey: "showExtensions")
         showCheckboxes = defaults.object(forKey: "showCheckboxes") as? Bool ?? true
         compact = defaults.bool(forKey: "compact")
-        showNavPane = defaults.object(forKey: "showNavPane") as? Bool ?? true
+        // Test runs hide the sidebar so they never read iCloud Drive (no permission prompts).
+        showNavPane = defaults.object(forKey: "showNavPane") as? Bool
+            ?? !(ProcessInfo.processInfo.environment["MYMAC_SELFTEST"] != nil
+                 || ProcessInfo.processInfo.environment["MYMAC_TEST_MINIMIZE"] != nil)
         sidePane = SidePane(rawValue: defaults.string(forKey: "sidePane") ?? "") ?? .none
+        confirmDelete = defaults.object(forKey: "confirmDelete") as? Bool ?? true
         accent = AccentColor(rawValue: defaults.string(forKey: "accent") ?? "") ?? .green
         CurrentAccent.value = accent
     }

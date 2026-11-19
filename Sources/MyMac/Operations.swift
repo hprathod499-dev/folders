@@ -55,6 +55,20 @@ final class FileOps: ObservableObject {
     @Published var conflict: ConflictRequest?
     @Published private(set) var undoStack: [UndoEntry] = []
     @Published var errorMessage: String?
+    /// A short confirmation shown in the status bar for a few seconds ("3 items copied").
+    @Published private(set) var notice: String?
+    private var noticeID = UUID()
+
+    func say(_ text: String) {
+        notice = text
+        let id = UUID()
+        noticeID = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            if self?.noticeID == id { self?.notice = nil }
+        }
+    }
+
+    static func count(_ n: Int) -> String { n == 1 ? "1 item" : "\(n) items" }
     private var flag = CancelFlag()
 
     var undoTitle: String? { undoStack.last?.title }

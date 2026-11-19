@@ -124,6 +124,7 @@ final class FileBrowser: ObservableObject, Identifiable {
     @Published var renameText = ""
     @Published var propertiesTarget: PropertiesTarget?
     @Published var confirmPermanentDelete: [URL]?
+    @Published var confirmTrash: [URL]?
     @Published var focusRequest: FocusRequest?
 
     private var anchor: URL?
@@ -829,9 +830,27 @@ final class FileBrowser: ObservableObject, Identifiable {
     /// Delete key: to the Trash (Recycle Bin), no question asked — undo with ⌘Z.
     func trash(_ urls: Set<URL>) {
         guard !urls.isEmpty else { return }
+        let before = ops.undoStack.count
         ops.trash(Array(urls))
         selection = []
         reload()
+        if ops.undoStack.count > before { ops.say("Moved \(FileOps.count(urls.count)) to the Trash · ⌘Z to undo") }
+    }
+
+    /// Delete key, toolbar and menus: asks "Move to Trash?" first (unless turned off), then trashes.
+    func requestTrash(_ urls: Set<URL>) {
+        guard !urls.isEmpty else { return }
+        if prefs.confirmDelete {
+            confirmTrash = orderedURLs.filter(urls.contains).isEmpty ? Array(urls) : orderedURLs.filter(urls.contains)
+        } else {
+            trash(urls)
+        }
+    }
+
+    func performTrash() {
+        guard let urls = confirmTrash else { return }
+        confirmTrash = nil
+        trash(Set(urls))
     }
 
     /// Shift+Delete: asks first, then deletes for good.
@@ -856,10 +875,15 @@ final class FileBrowser: ObservableObject, Identifiable {
         cutPaths = cut ? Set(urls.map { $0.standardizedFileURL.path }) : []
         cutChangeCount = pasteboard.changeCount
         objectWillChange.send()
+        ops.say(cut ? "\(FileOps.count(urls.count)) cut. Paste (⌘V) in another folder to move \(urls.count == 1 ? "it" : "them")."
+                    : "\(FileOps.count(urls.count)) copied")
     }
 
-    func paste() {
-        guard let dir = currentURL else { return }
+    func paste() { paste(into: currentURL) }
+
+    /// Paste into a folder: the current one, or a folder you right-clicked ("Paste into folder").
+    func paste(into folder: URL?) {
+        guard let dir = folder else { return }
         let pasteboard = FileBrowser.pasteboard
         let sources = clipboardFiles()
         guard !sources.isEmpty else { return }
@@ -871,22 +895,35 @@ final class FileBrowser: ObservableObject, Identifiable {
                 pasteboard.clearContents()
             }
             reload()
-            select(paths: created.map(\.path))
+            if dir.normalizedFolder == currentURL { select(paths: created.map(\.path)) }
+            if !created.isEmpty {
+                let place = FileManager.default.displayName(atPath: dir.path)
+                ops.say("\(move ? "Moved" : "Pasted") \(FileOps.count(created.count))"
+                        + (dir.normalizedFolder == currentURL ? "" : " into \(place)"))
+            }
         }
     }
 
+    /// Whether "Paste into folder" can be offered for a folder.
+    func canPaste(into folder: URL) -> Bool { !clipboardFiles().isEmpty && FileBrowser.isFolder(folder) }
+
     /// Files dropped from Finder or this app. Same drive moves, another drive copies (⌥ always copies).
-    func drop(_ urls: [URL], into dir: URL) -> Bool {
+    /// `copy` forces copy (⌥ held) — tests pass it directly; nil reads the keyboard.
+    func drop(_ urls: [URL], into dir: URL, copy: Bool? = nil) -> Bool {
         let target = dir.standardizedFileURL.path
         let fileURLs = urls.filter { $0.isFileURL && $0.standardizedFileURL.path != target }
         guard !fileURLs.isEmpty else { return false }
-        let forceCopy = NSEvent.modifierFlags.contains(.option)
+        let forceCopy = copy ?? NSEvent.modifierFlags.contains(.option)
         let dirVolume = FileOps.volumeID(dir)
         let sameVolume = fileURLs.allSatisfy { FileOps.volumeID($0) == dirVolume }
+        let move = sameVolume && !forceCopy
         Task {
-            let created = await ops.transfer(fileURLs, into: dir, move: sameVolume && !forceCopy)
+            let created = await ops.transfer(fileURLs, into: dir, move: move)
             reload()
             if dir.normalizedFolder == currentURL { select(paths: created.map(\.path)) }
+            if !created.isEmpty {
+                ops.say("\(move ? "Moved" : "Copied") \(FileOps.count(created.count)) to \(FileManager.default.displayName(atPath: dir.path))")
+            }
         }
         return true
     }
@@ -980,13 +1017,25 @@ final class AppState: ObservableObject {
     private var cancellable: AnyCancellable?
 
     private init() {
-        let first = FileBrowser()
+        let first = FileBrowser(start: AppState.initialLocation)
         tabs = [first]
         selectedID = first.id
         observeCurrent()
     }
 
     var current: FileBrowser { tabs.first { $0.id == selectedID } ?? tabs[0] }
+
+    /// Normally Home. Test runs start somewhere that needs no folder permissions
+    /// (Home reads Desktop, Documents and Downloads, which makes macOS ask).
+    static var initialLocation: Location {
+        let env = ProcessInfo.processInfo.environment
+        if let dir = env["MYMAC_SELFTEST"] {
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            return .folder(URL(fileURLWithPath: dir))
+        }
+        if env["MYMAC_TEST_MINIMIZE"] != nil { return .folder(URL(fileURLWithPath: "/")) }
+        return .home
+    }
 
     func newTab(_ location: Location = .home) {
         let tab = FileBrowser(start: location)

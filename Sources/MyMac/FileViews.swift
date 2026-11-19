@@ -439,7 +439,7 @@ struct ListKeyboard: ViewModifier {
         case .delete:
             browser.goBack(); return .handled
         case .deleteForward:
-            if shift { browser.requestPermanentDelete(browser.selection) } else { browser.trash(browser.selection) }
+            if shift { browser.requestPermanentDelete(browser.selection) } else { browser.requestTrash(browser.selection) }
             return .handled
         case .escape:
             if QuickLook.shared.isOpen { QuickLook.shared.close() } else { browser.selectNone() }
@@ -712,7 +712,7 @@ struct ItemChrome: ViewModifier {
             .winContextMenu(prepare: { browser.prepareContextMenu(for: item.url) }) {
                 Menus.items(browser, browser.selection.isEmpty ? [item.url] : browser.selection)
             }
-            .onDrag { NSItemProvider(object: item.url as NSURL) }
+            .modifier(FileDragSource(url: item.url))
             .modifier(DropInto(folder: item.isDirectory ? item.url : nil, isTargeted: $dropTarget))
             .help(tooltip)
             .environment(\.itemHovering, hovering)
@@ -1303,7 +1303,7 @@ struct GalleryTile: View {
         .winContextMenu(prepare: { browser.prepareContextMenu(for: item.url) }) {
             Menus.items(browser, browser.selection.isEmpty ? [item.url] : browser.selection)
         }
-        .onDrag { NSItemProvider(object: item.url as NSURL) }
+        .modifier(FileDragSource(url: item.url))
         .help(item.name)
     }
 }

@@ -439,6 +439,7 @@ struct OptionsView: View {
                     Toggle("Use check boxes to select items", isOn: $prefs.showCheckboxes)
                     Toggle("Decrease space between items (compact view)", isOn: $prefs.compact)
                     Toggle("Show the navigation pane", isOn: $prefs.showNavPane)
+                    Toggle("Ask before moving items to the Trash", isOn: $prefs.confirmDelete)
                     Toggle("Open Folders when you log in", isOn: Binding(
                         get: { LoginItem.isOn }, set: { LoginItem.set($0) }))
                 }
@@ -468,6 +469,7 @@ struct OptionsView: View {
                     prefs.compact = false
                     prefs.showNavPane = true
                     prefs.accent = .green
+                    prefs.confirmDelete = true
                 }
                 Spacer()
                 Button("OK") { NSApp.keyWindow?.close() }.keyboardShortcut(.defaultAction)

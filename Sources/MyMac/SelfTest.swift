@@ -8,6 +8,8 @@ enum SelfTest {
     private static var results: [(String, Bool)] = []
     private static var autoAnswer: AnyCancellable?
     private static var answer: ConflictChoice = .keepBoth
+    /// MYMAC_SELFTEST_FULL=1 also checks Home, Gallery and Downloads (macOS may ask for folder access).
+    private static let fullRun = ProcessInfo.processInfo.environment["MYMAC_SELFTEST_FULL"] != nil
 
     static func run(in root: URL) async {
         let fm = FileManager.default
@@ -189,6 +191,7 @@ enum SelfTest {
 
         await moreTests(root: root, browser: browser)
         await stressTests(root: root, browser: browser)
+        await copyPasteDragTests(root: root, browser: browser)
 
         check("Your real clipboard was not touched", NSPasteboard.general.changeCount == generalBefore)
         privateBoard.releaseGlobally()
@@ -341,7 +344,7 @@ enum SelfTest {
         check("Address bar: C:", browser.currentURL?.path == "/")
         browser.goTo(path: "this pc")
         check("Address bar: This PC", browser.location == .thisMac)
-        if let dl = Place.downloads {
+        if fullRun, let dl = Place.downloads {
             browser.goTo(path: "Downloads")
             check("Address bar: Downloads", browser.currentURL == dl.normalizedFolder)
         }
@@ -447,17 +450,19 @@ enum SelfTest {
               !(pc.searchResults ?? []).contains { $0.url.path.hasPrefix(home + "/Library/") || $0.url.path.hasPrefix("/System/") })
 
         // Downloads opens like Windows: grouped by date, newest first
-        if let dl = Place.downloads {
+        if fullRun, let dl = Place.downloads {
             let d = FileBrowser(start: .folder(dl))
             check("Downloads groups by date, newest first", d.groupBy == .date && d.sortField == .date && !d.sortAscending)
         }
 
         // Home and Gallery load
-        let homeTab = FileBrowser(start: .home)
-        let galleryTab = FileBrowser(start: .gallery)
-        try? await Task.sleep(nanoseconds: 3_000_000_000)
-        check("Home loads recent files", !homeTab.recentItems.isEmpty)
-        check("Gallery finishes loading", !galleryTab.isLoadingGallery)
+        if fullRun {
+            let homeTab = FileBrowser(start: .home)
+            let galleryTab = FileBrowser(start: .gallery)
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            check("Home loads recent files", !homeTab.recentItems.isEmpty)
+            check("Gallery finishes loading", !galleryTab.isLoadingGallery)
+        }
 
         // Properties
         browser.reload()
@@ -706,6 +711,168 @@ enum SelfTest {
         let pc = FileBrowser(start: .thisMac)
         check("This PC shows Macintosh HD (C:)", pc.volumes.contains { $0.isInternal && $0.displayName.hasSuffix("(C:)") })
         try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+    }
+
+    // MARK: - Copy, cut, paste, drag, new and delete — through the menus too
+
+    private static func entry(_ title: String, in entries: [WinMenuEntry]) -> WinMenuEntry? {
+        for e in entries {
+            if e.title == title { return e }
+            if case .submenu(let children) = e.kind, let hit = entry(title, in: children) { return hit }
+        }
+        return nil
+    }
+
+    private static func tool(_ name: String, in entries: [WinMenuEntry]) -> WinToolButton? {
+        for e in entries { if case .toolbar(let buttons) = e.kind { return buttons.first { $0.title == name } } }
+        return nil
+    }
+
+    private static func copyPasteDragTests(root: URL, browser: FileBrowser) async {
+        let fm = FileManager.default
+        let ops = FileOps.shared
+        let prefs = Prefs.shared
+        let base = root.appendingPathComponent("CopyPaste")
+        let a = base.appendingPathComponent("A"), b = base.appendingPathComponent("B")
+        for d in [a, b] { try? fm.createDirectory(at: d, withIntermediateDirectories: true) }
+        func make(_ name: String, in dir: URL, _ text: String = "x") -> URL {
+            let u = dir.appendingPathComponent(name); try? text.write(to: u, atomically: true, encoding: .utf8); return u
+        }
+        func names(_ dir: URL) -> [String] { ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).filter { !$0.hasPrefix(".") }.sorted() }
+        func read(_ u: URL) -> String? { try? String(contentsOf: u, encoding: .utf8) }
+        let one = make("one.txt", in: a, "1"), two = make("two.txt", in: a, "2"), three = make("three.txt", in: a, "3")
+        let sub = a.appendingPathComponent("Sub/Deeper")
+        try? fm.createDirectory(at: sub, withIntermediateDirectories: true)
+        _ = make("inner.txt", in: sub, "inner")
+
+        // Copy several → paste in another folder
+        browser.go(to: .folder(a)); browser.reload()
+        browser.copy([one, two, three])
+        check("Copy shows “3 items copied”", ops.notice == "3 items copied")
+        browser.go(to: .folder(b))
+        browser.paste()
+        await settle()
+        check("Paste 3 copied files into another folder", names(b) == ["one.txt", "three.txt", "two.txt"] && names(a).count == 4)
+        check("Pasted files keep their contents", read(b.appendingPathComponent("two.txt")) == "2")
+        check("Pasted files are selected afterwards", browser.selection.count == 3)
+        check("Paste shows “Pasted 3 items”", ops.notice == "Pasted 3 items")
+
+        // Paste again into the same place → conflict → keep both
+        browser.paste()
+        await settle()
+        check("Pasting again asks and keeps both (one (2).txt)", names(b).contains("one (2).txt") && names(b).count == 6)
+
+        // Copy + paste twice in the same folder
+        browser.go(to: .folder(a)); browser.reload()
+        browser.copy([one]); browser.paste(); await settle(); browser.paste(); await settle()
+        check("Paste twice in the same folder: “- Copy” then “- Copy (2)”",
+              names(a).contains("one - Copy.txt") && names(a).contains("one - Copy (2).txt"))
+
+        // Copy a folder tree
+        browser.copy([a.appendingPathComponent("Sub")])
+        browser.go(to: .folder(b)); browser.paste(); await settle()
+        check("Copy and paste a folder with nested folders", read(b.appendingPathComponent("Sub/Deeper/inner.txt")) == "inner")
+
+        // Cut several → paste → moved; clipboard empty; undo puts all back
+        let c1 = make("cut1.txt", in: a), c2 = make("cut2.txt", in: a)
+        browser.go(to: .folder(a)); browser.reload()
+        browser.copy([c1, c2], cut: true)
+        check("Cut shows a hint to paste elsewhere", ops.notice?.hasPrefix("2 items cut") == true)
+        check("Both cut items are dimmed", browser.isCut(c1) && browser.isCut(c2))
+        browser.go(to: .folder(b)); browser.paste(); await settle()
+        check("Cut → Paste moves both files", names(b).contains("cut1.txt") && names(b).contains("cut2.txt") && !names(a).contains("cut1.txt"))
+        check("Paste after Cut says “Moved 2 items”", ops.notice == "Moved 2 items")
+        check("After moving, Paste is greyed out", !browser.canPaste())
+        browser.undo()
+        check("Undo puts both cut files back", names(a).contains("cut1.txt") && names(a).contains("cut2.txt"))
+
+        // Right-click menus run the real commands
+        browser.go(to: .folder(a)); browser.reload()
+        let fileMenu = Menus.items(browser, [two]).main
+        tool("Copy", in: fileMenu)?.action()
+        check("Menu: Copy button puts the file on the clipboard", browser.clipboardFiles().map(\.lastPathComponent) == ["two.txt"])
+        let target = a.appendingPathComponent("Target")
+        try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+        browser.reload()
+        let folderMenu = Menus.items(browser, [target]).main
+        let pasteInto = entry("Paste into folder", in: folderMenu)
+        check("Menu: folder offers “Paste into folder”", pasteInto?.enabled == true)
+        pasteInto?.action?()
+        await settle()
+        check("Menu: Paste into folder puts the file in that folder", names(target) == ["two.txt"])
+        check("Paste into folder says where it went", ops.notice == "Pasted 1 item into Target")
+        let bg = Menus.background(browser).main
+        entry("Paste", in: bg)?.action?()
+        await settle()
+        check("Menu: empty-space Paste pastes here", names(a).contains("two - Copy.txt"))
+        for (title, file) in [("Folder", "New folder"), ("Text Document", "New Text Document.txt"),
+                              ("Rich Text Document", "New Rich Text Document.rtf"),
+                              ("Compressed (zipped) Folder", "New Compressed (zipped) Folder.zip")] {
+            entry(title, in: Menus.background(browser).main)?.action?()
+            let renaming = browser.renamingURL?.lastPathComponent == file
+            browser.cancelRename()
+            check("Menu: New › \(title) creates “\(file)” and starts renaming it", names(a).contains(file) && renaming)
+        }
+        let newEntry = entry("New", in: bg)
+        check("Menu: New is offered in a folder", newEntry?.enabled == true)
+
+        // Delete asks first (Move to Trash?), unless turned off
+        prefs.confirmDelete = true
+        let del1 = make("delete-me.txt", in: a)
+        browser.reload()
+        tool("Delete", in: Menus.items(browser, [del1]).main)?.action()
+        check("Delete asks “Are you sure?” first and deletes nothing yet",
+              browser.confirmTrash == [del1] && fm.fileExists(atPath: del1.path))
+        browser.confirmTrash = nil
+        check("Cancel keeps the file", fm.fileExists(atPath: del1.path))
+        browser.requestTrash([del1])
+        browser.performTrash()
+        check("Confirming moves it to the Trash", !fm.fileExists(atPath: del1.path))
+        check("Delete says how to undo", ops.notice?.contains("⌘Z") == true)
+        browser.undo()
+        check("Undo brings the deleted file back", fm.fileExists(atPath: del1.path))
+        prefs.confirmDelete = false
+        browser.requestTrash([del1])
+        check("With “Don't ask me again”, Delete goes straight to the Trash", !fm.fileExists(atPath: del1.path) && browser.confirmTrash == nil)
+        browser.undo()
+        prefs.confirmDelete = true
+
+        // Dragging carries the whole selection
+        browser.reload()
+        browser.selection = [one, two, three]
+        check("Drag one of 3 selected files → all 3 are dragged", FileDragger.filesToDrag(startingAt: two, in: browser).count == 3)
+        check("Drag an unselected file → just that file", FileDragger.filesToDrag(startingAt: c1, in: browser) == [c1])
+        let dragTo = base.appendingPathComponent("DragTo")
+        try? fm.createDirectory(at: dragTo, withIntermediateDirectories: true)
+        _ = browser.drop([c1, c2], into: dragTo)
+        await settle()
+        check("Drop several files on a folder moves them", names(dragTo) == ["cut1.txt", "cut2.txt"] && !names(a).contains("cut1.txt"))
+        check("Drop says “Moved 2 items to DragTo”", ops.notice == "Moved 2 items to DragTo")
+        _ = browser.drop([one, two], into: dragTo, copy: true)
+        await settle()
+        check("⌥-drop copies and keeps the originals", names(dragTo).contains("one.txt") && fm.fileExists(atPath: one.path))
+        _ = browser.drop([one], into: dragTo, copy: true)
+        await settle()
+        check("Dropping onto a name that exists asks and keeps both", names(dragTo).contains("one (2).txt"))
+        ops.errorMessage = nil
+        _ = browser.drop([a], into: sub)
+        await settle()
+        check("Dropping a folder into its own subfolder is refused", ops.errorMessage != nil && fm.fileExists(atPath: a.path))
+        ops.errorMessage = nil
+        let countBefore = names(dragTo).count
+        _ = browser.drop([dragTo.appendingPathComponent("one.txt")], into: dragTo)
+        await settle()
+        check("Dropping a file onto its own folder changes nothing", names(dragTo).count == countBefore)
+
+        // Many files at once
+        let many = base.appendingPathComponent("Many")
+        try? fm.createDirectory(at: many, withIntermediateDirectories: true)
+        let files = (1...60).map { make("f\($0).txt", in: many, "\($0)") }
+        browser.copy(Set(files))
+        browser.go(to: .folder(dragTo)); browser.paste()
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        check("Copy and paste 60 files at once", names(dragTo).filter { $0.hasPrefix("f") }.count == 60)
+        browser.go(to: .folder(root))
     }
 
     private static func makeImage(_ url: URL, width: Int, height: Int, type: String, orientation: Int?) {
