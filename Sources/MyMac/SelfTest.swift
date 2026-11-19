@@ -192,6 +192,7 @@ enum SelfTest {
         await moreTests(root: root, browser: browser)
         await stressTests(root: root, browser: browser)
         await copyPasteDragTests(root: root, browser: browser)
+        await realRightClickTests(root: root)
 
         check("Your real clipboard was not touched", NSPasteboard.general.changeCount == generalBefore)
         privateBoard.releaseGlobally()
@@ -873,6 +874,70 @@ enum SelfTest {
         try? await Task.sleep(nanoseconds: 2_000_000_000)
         check("Copy and paste 60 files at once", names(dragTo).filter { $0.hasPrefix("f") }.count == 60)
         browser.go(to: .folder(root))
+    }
+
+    // MARK: - Real right-clicks sent through macOS (not by calling the menu code directly)
+
+    private static func realRightClickTests(root: URL) async {
+        let fm = FileManager.default
+        let dir = root.appendingPathComponent("RightClick")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        for n in ["alpha.txt", "beta.txt"] { try? "x".write(to: dir.appendingPathComponent(n), atomically: true, encoding: .utf8) }
+        let app = AppState.shared
+        app.current.go(to: .folder(dir))
+        app.current.viewMode = .details
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        guard let window = WindowActions.mainWindow, let view = window.contentView else {
+            check("Right-click test: app window found", false); return
+        }
+        let frames = RightClickTargets.shared.debugFrames
+        let area = { (r: CGRect) in r.width * r.height }
+        let rows = frames.filter { $0.height < 50 && $0.width > 200 && $0.minY > 150 }
+        guard let row = rows.min(by: { $0.minY < $1.minY }),
+              let list = frames.filter({ $0.height > 200 }).max(by: { area($0) < area($1) }) else {
+            check("Right-click test: file rows found on screen", false); return
+        }
+        func post(_ type: NSEvent.EventType, _ p: CGPoint) {
+            var q = p
+            if !view.isFlipped { q.y = view.bounds.height - q.y }
+            let loc = view.convert(q, to: nil)
+            if let e = NSEvent.mouseEvent(with: type, location: loc, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) {
+                NSApp.postEvent(e, atStart: false)
+            }
+        }
+        func rightClick(_ p: CGPoint) async {
+            post(.rightMouseDown, p); post(.rightMouseUp, p)
+            try? await Task.sleep(nanoseconds: 700_000_000)
+        }
+        let menu = WinMenu.shared
+
+        await rightClick(CGPoint(x: row.midX, y: row.midY))
+        check("Real right-click on a file opens the menu (and it stays open)",
+              menu.isOpen && menu.root.contains { $0.title == "Open" })
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        check("Menu is still open half a second later", menu.isOpen)
+
+        post(.leftMouseDown, CGPoint(x: list.maxX - 30, y: list.maxY - 30))
+        post(.leftMouseUp, CGPoint(x: list.maxX - 30, y: list.maxY - 30))
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        check("Clicking somewhere else closes the menu", !menu.isOpen)
+
+        await rightClick(CGPoint(x: list.midX, y: list.maxY - 40))
+        check("Real right-click on empty space opens View / Sort by / New…",
+              menu.isOpen && menu.root.contains { $0.title == "View" } && menu.root.contains { $0.title == "New" })
+        if let esc = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                      windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+                                      charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53) {
+            NSApp.postEvent(esc, atStart: false)
+        }
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        check("Esc closes the menu", !menu.isOpen)
+
+        await rightClick(CGPoint(x: row.midX, y: row.midY))
+        await rightClick(CGPoint(x: list.midX, y: list.maxY - 40))
+        check("Right-clicking again swaps to the new menu", menu.isOpen && menu.root.contains { $0.title == "View" })
+        menu.close()
     }
 
     private static func makeImage(_ url: URL, width: Int, height: Int, type: String, orientation: Int?) {

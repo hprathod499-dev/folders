@@ -3,3 +3,6 @@ build/
 .DS_Store
 *.dmg
 .swiftpm/
+
+# The ready-to-install app shown at the top of the GitHub page
+!Download/Folders.dmg

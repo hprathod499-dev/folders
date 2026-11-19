@@ -145,8 +145,11 @@ final class WinMenu: ObservableObject {
         panel.makeKey()
         self.panel = panel
 
+        // Close on a click outside the menu, but not on the very click that opened it
+        // (macOS passes that same event to monitors added while it's being handled).
+        let openedAt = ProcessInfo.processInfo.systemUptime
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-            guard let self else { return event }
+            guard let self, event.timestamp > openedAt else { return event }
             if event.window !== self.panel { self.close() }
             return event
         } as Any)
@@ -156,7 +159,7 @@ final class WinMenu: ObservableObject {
             return event
         } as Any)
         monitors.append(NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
-            if event.window !== self?.panel { self?.close() }
+            if event.timestamp > openedAt, event.window !== self?.panel { self?.close() }
             return event
         } as Any)
         observers.append(NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification,
@@ -454,6 +457,9 @@ final class RightClickTargets {
     }
 
     func updateFrame(_ id: UUID, _ frame: CGRect) { targets[id]?.frame = frame }
+
+    /// Test aid: where the right-clickable things are (window coordinates, top-left origin).
+    var debugFrames: [CGRect] { targets.values.map(\.frame).filter { $0.width > 1 && $0.height > 1 } }
 
     private func installIfNeeded() {
         guard monitor == nil else { return }

@@ -8,6 +8,8 @@
 
 For macOS 14 or newer, on any Mac (Apple silicon or Intel). Free.
 
+You can also open the **Download** folder at the top of this page, click **Folders.dmg**, then click the **Download raw file** button (⬇ on the right).
+
 1. **Open** the downloaded `Folders.dmg`.
 2. **Drag** Folders onto the Applications folder.
 3. **Open** Folders from Launchpad.
