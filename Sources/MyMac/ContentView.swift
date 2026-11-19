@@ -167,13 +167,13 @@ struct CaptionButtons: View {
     var body: some View {
         HStack(spacing: 6) {
             CaptionButton(symbol: "minus", help: "Minimize", danger: false) {
-                NSApp.keyWindow?.miniaturize(nil)
+                WindowActions.minimize()
             }
             CaptionButton(symbol: "arrow.up.left.and.arrow.down.right", help: "Full screen", danger: false) {
-                NSApp.keyWindow?.toggleFullScreen(nil)
+                WindowActions.mainWindow?.toggleFullScreen(nil)
             }
             CaptionButton(symbol: "xmark", help: "Close", danger: true) {
-                NSApp.keyWindow?.performClose(nil)
+                WindowActions.mainWindow?.performClose(nil)
             }
         }
         .padding(.trailing, 10)
@@ -203,6 +203,56 @@ struct CaptionButton: View {
     }
 }
 
+/// Minimize / full screen / close for the app's main window (not a menu or dialog).
+@MainActor
+enum WindowActions {
+    static var mainWindow: NSWindow? {
+        if let w = NSApp.mainWindow, !(w is NSPanel) { return w }
+        return NSApp.windows.first { $0.isVisible && !($0 is NSPanel) && !$0.isSheet && $0.contentView != nil }
+    }
+
+    /// macOS can't minimize a full-screen window, so leave full screen first (Windows has no such limit).
+    static func minimize() {
+        guard let window = mainWindow else { return }
+        guard window.styleMask.contains(.fullScreen) else {
+            miniaturize(window)
+            return
+        }
+        var token: NSObjectProtocol?
+        token = NotificationCenter.default.addObserver(forName: NSWindow.didExitFullScreenNotification,
+                                                       object: window, queue: .main) { _ in
+            if let token { NotificationCenter.default.removeObserver(token) }
+            MainActor.assumeIsolated { miniaturize(window) }
+        }
+        window.toggleFullScreen(nil)
+    }
+
+    /// macOS won't minimize a window whose own minimize button is hidden (we hide the Mac buttons
+    /// so the tabs can start at the edge), so show it for that moment and hide it again afterwards.
+    private static func miniaturize(_ window: NSWindow) {
+        // Keep the (invisible) button present until the window comes back from the Dock;
+        // hiding it again mid-animation makes macOS cancel the minimize.
+        let button = window.standardWindowButton(.miniaturizeButton)
+        button?.alphaValue = 0
+        button?.isHidden = false
+        isMinimizing = true
+        var token: NSObjectProtocol?
+        token = NotificationCenter.default.addObserver(forName: NSWindow.didDeminiaturizeNotification,
+                                                       object: window, queue: .main) { _ in
+            if let token { NotificationCenter.default.removeObserver(token) }
+            MainActor.assumeIsolated {
+                isMinimizing = false
+                button?.isHidden = true
+                button?.alphaValue = 1
+            }
+        }
+        window.miniaturize(nil)
+    }
+
+    /// While true, the Mac buttons are left alone (see HideTrafficLights).
+    static var isMinimizing = false
+}
+
 /// Hides the Mac's red/yellow/green buttons so the tabs start at the left edge, like Windows.
 struct HideTrafficLights: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { Watcher() }
@@ -224,6 +274,8 @@ struct HideTrafficLights: NSViewRepresentable {
         }
         private func hide(_ window: NSWindow) { Self.hideButtons(window) }
         @MainActor static func hideButtons(_ window: NSWindow) {
+            window.styleMask.insert(.miniaturizable)
+            guard !WindowActions.isMinimizing else { return }
             for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
                 window.standardWindowButton(kind)?.isHidden = true
             }

@@ -20,6 +20,7 @@ struct MyMacApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static weak var testedWindow: NSWindow?
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         Prefs.shared.applyAppearance()
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { await SelfTest.run(in: URL(fileURLWithPath: dir)) }
         } else {
             debugSnapshotIfRequested(env)
+            testMinimizeIfRequested(env)
         }
     }
 
@@ -44,6 +46,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Like Windows: closing the window quits the app.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    private func testMinimizeIfRequested(_ env: [String: String]) {
+        // MYMAC_TEST_MINIMIZE=windowed|fullscreen: puts the window in that state, presses Minimize, reports.
+        guard let mode = env["MYMAC_TEST_MINIMIZE"] else { return }
+        let wantFull = mode == "fullscreen"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            NSApp.activate(ignoringOtherApps: true)
+            if let w = WindowActions.mainWindow, w.styleMask.contains(.fullScreen) != wantFull { w.toggleFullScreen(nil) }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) {
+            let w = WindowActions.mainWindow
+            AppDelegate.testedWindow = w
+            print("MINIMIZE \(mode) before: fullScreen=\(w?.styleMask.contains(.fullScreen) ?? false) active=\(NSApp.isActive) button=\(w?.standardWindowButton(.miniaturizeButton) != nil) windows=\(NSApp.windows.map { String(describing: type(of: $0)) })")
+            WindowActions.minimize()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 9) {
+            let w = AppDelegate.testedWindow
+            print("MINIMIZE \(mode) result: miniaturized=\(w?.isMiniaturized ?? false) visible=\(w?.isVisible ?? false) mask=\(w?.styleMask.rawValue ?? 0) titled=\(w?.styleMask.contains(.titled) ?? false) delegate=\(w?.delegate.map { String(describing: type(of: $0)) } ?? "nil")")
+            w?.deminiaturize(nil)
+            if w?.styleMask.contains(.fullScreen) == true { w?.toggleFullScreen(nil) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { exit(0) }
+        }
+    }
 
     /// Development aid: MYMAC_SNAPSHOT=/path.png saves a picture of the window, then quits.
     private func debugSnapshotIfRequested(_ env: [String: String]) {
