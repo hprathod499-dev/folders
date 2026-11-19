@@ -13,6 +13,10 @@ rm -rf "$STAGE" "$DMG"
 mkdir -p "$STAGE"
 ditto build/Folders.app "$STAGE/Folders.app"
 ln -s /Applications "$STAGE/Applications"
+# Helpers that macOS never blocks: a shortcut straight to Privacy & Security (for "Open Anyway")
+# and a short install note.
+cp Resources/dmg/* "$STAGE/"
+SetFile -a E "$STAGE"/*.html 2>/dev/null || true   # hide the .html extension
 hdiutil create -volname "Folders" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 "$DMG" >/dev/null
 rm -rf "$STAGE"
 cp "$DMG" build/Folders.dmg   # fixed name used by the "latest" download link

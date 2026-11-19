@@ -1,0 +1,25 @@
+HOW TO INSTALL FOLDERS
+
+1. Drag "Folders" onto the "Applications" folder in this window.
+2. Open Folders from Launchpad (or press Command + Space and type Folders).
+
+
+"APPLE COULD NOT VERIFY FOLDERS…"?
+
+This appears the first time only, because Folders isn't registered with
+Apple yet. The app is safe: all of its code is public on GitHub.
+
+1. Click "Done" on the warning (not "Move to Trash").
+2. Double-click "Can't open Folders? Open me" in this window and click
+   the green button (allow your browser to open System Settings).
+   System Settings opens at Privacy & Security.
+3. Scroll to the bottom and click "Open Anyway" next to
+   "Folders" was blocked to protect your Mac.
+4. Enter your Mac password (or use Touch ID), then click "Open Anyway" again.
+
+Folders now opens normally, every time.
+
+Tip: the "Open Anyway" button shows for about an hour after the warning.
+If you don't see it, open Folders once more, click "Done", and try again.
+
+https://github.com/hprathod499-dev/folders
