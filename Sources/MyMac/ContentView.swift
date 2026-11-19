@@ -1,26 +1,40 @@
 import AppKit
 import SwiftUI
 
-/// Folders' own colour scheme: warm graphite (dark) or warm paper (light) with an amber accent
-/// that matches the app icon.
+/// Folders' own colour scheme: graphite (dark) or paper (light), with the accent colour
+/// chosen in Customise (green by default).
 enum Theme {
-    static let strip = dynamic(0x141312, 0xEAE6DF)
-    static let chrome = dynamic(0x1F1D1B, 0xF6F3EE)
+    static let strip = dynamic(0x141312, 0xEAE8E4)
+    static let chrome = dynamic(0x1F1D1B, 0xF6F5F2)
     static let content = dynamic(0x191817, 0xFFFFFF)
     static let field = dynamic(0x2B2926, 0xFFFFFF)
-    static let fieldBorder = dynamic(0x3A3632, 0xDAD3C8)
-    static let hover = dynamic(0xFFFFFF, 0x7A5A1E, 0.06, 0.07)
-    static let selected = dynamic(0xFFB224, 0xFFB224, 0.16, 0.22)
-    static let selectedHover = dynamic(0xFFB224, 0xFFB224, 0.22, 0.30)
-    static let divider = dynamic(0xFFFFFF, 0x3A2A10, 0.08, 0.10)
-    static let text = dynamic(0xFFFFFF, 0x1E1A14, 0.92, 1)
-    static let secondary = dynamic(0xFFFFFF, 0x1E1A14, 0.60, 0.62)
-    static let tertiary = dynamic(0xFFFFFF, 0x1E1A14, 0.35, 0.32)
-    static let accent = dynamic(0xFFB224, 0xA75A00)
-    static let onAccent = dynamic(0x1A1206, 0xFFFFFF)
-    static let barTrack = dynamic(0xFFFFFF, 0x3A2A10, 0.12, 0.10)
-    /// Icon colour for places in the sidebar and title bar.
-    static let brand = Color(hex: 0xF2A60C)
+    static let fieldBorder = dynamic(0x3A3632, 0xD6D3CE)
+    static let hover = dynamic(0xFFFFFF, 0x000000, 0.06, 0.05)
+    static let selected = accented(darkAlpha: 0.18, lightAlpha: 0.16)
+    static let selectedHover = accented(darkAlpha: 0.25, lightAlpha: 0.24)
+    static let divider = dynamic(0xFFFFFF, 0x000000, 0.08, 0.10)
+    static let text = dynamic(0xFFFFFF, 0x161616, 0.92, 1)
+    static let secondary = dynamic(0xFFFFFF, 0x161616, 0.60, 0.62)
+    static let tertiary = dynamic(0xFFFFFF, 0x161616, 0.35, 0.32)
+    static let accent = accented(darkAlpha: 1, lightAlpha: 1, deepInLight: true)
+    static let onAccent = dynamic(0x111111, 0xFFFFFF)
+    static let barTrack = dynamic(0xFFFFFF, 0x000000, 0.12, 0.10)
+    /// Icon colour for places in the sidebar and title bar, and for folders.
+    static let brand = Color(nsColor: NSColor(name: nil) { _ in nsColor(CurrentAccent.value.icon) })
+
+    /// The chosen accent: its bright shade (dark mode) or deep shade (light mode, for text and buttons).
+    private static func accented(darkAlpha: CGFloat, lightAlpha: CGFloat, deepInLight: Bool = false) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let a = CurrentAccent.value
+            return nsColor(isDark || !deepInLight ? a.dark : a.light, alpha: isDark ? darkAlpha : lightAlpha)
+        })
+    }
+
+    static func nsColor(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
+    }
     static let danger = Color(hex: 0xE5484D)
 
     static func dynamic(_ dark: UInt32, _ light: UInt32, _ darkAlpha: CGFloat = 1, _ lightAlpha: CGFloat = 1) -> Color {
@@ -51,6 +65,7 @@ struct ContentView: View {
         .foregroundStyle(Theme.text)
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(prefs.colorScheme)
+        .id(prefs.accent)
         .overlay(alignment: .bottomTrailing) {
             if let progress = ops.progress {
                 ProgressCard(progress: progress)
@@ -678,6 +693,15 @@ struct CommandBar: View {
                 MenuRow(title: "Hidden items", symbol: "eye.slash", mark: prefs.showHidden ? .check : .none, shortcut: "⇧⌘.") {
                     close(); prefs.showHidden.toggle()
                 }
+                MenuSeparator()
+                Text("Customise")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                AccentSwatches()
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 6)
             }
             .help("Layout and view options")
 
@@ -868,6 +892,37 @@ struct DropMenu<Label: View, Content: View>: View {
 }
 
 enum MenuMark { case none, check, bullet }
+
+/// Customise: one round swatch per accent colour; the chosen one has a ring and a tick.
+struct AccentSwatches: View {
+    @ObservedObject private var prefs = Prefs.shared
+    var size: CGFloat = 22
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(AccentColor.allCases) { colour in
+                let chosen = prefs.accent == colour
+                Button { prefs.accent = colour } label: {
+                    Circle()
+                        .fill(Color(nsColor: Theme.nsColor(colour.icon)))
+                        .frame(width: size, height: size)
+                        .overlay {
+                            if chosen {
+                                Image(systemName: "checkmark").font(.system(size: size * 0.45, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .padding(3)
+                        .overlay(Circle().strokeBorder(chosen ? Theme.text : .clear, lineWidth: 1.5))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .help(colour == .green ? "Green (default)" : colour.title)
+                .accessibilityLabel(colour.title)
+            }
+        }
+    }
+}
 
 struct MenuRow: View {
     let title: String
@@ -1064,11 +1119,13 @@ struct FolderIcon: View {
             back.addLine(to: CGPoint(x: left + r, y: bottom))
             back.addQuadCurve(to: CGPoint(x: left, y: bottom - r), control: CGPoint(x: left, y: bottom))
             back.closeSubpath()
-            ctx.fill(back, with: .color(Color(hex: 0xD98A06)))
+            let base = Theme.nsColor(CurrentAccent.value.icon)
+            ctx.fill(back, with: .color(Color(nsColor: base.blended(withFraction: 0.18, of: .black) ?? base)))
             let front = Path(roundedRect: CGRect(x: left, y: top + h * 0.22, width: right - left,
                                                  height: bottom - top - h * 0.22),
                              cornerRadius: r)
-            ctx.fill(front, with: .linearGradient(Gradient(colors: [Color(hex: 0xFFCE4A), Color(hex: 0xF5AE1A)]),
+            ctx.fill(front, with: .linearGradient(Gradient(colors: [Color(nsColor: base.blended(withFraction: 0.30, of: .white) ?? base),
+                                                                    Color(nsColor: base)]),
                                                   startPoint: CGPoint(x: 0, y: top + h * 0.22),
                                                   endPoint: CGPoint(x: 0, y: bottom)))
         }

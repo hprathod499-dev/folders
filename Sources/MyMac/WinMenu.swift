@@ -284,13 +284,13 @@ enum ClassicMenu {
 
 // MARK: - Look (Windows 11)
 
-/// Folders' own menu style: warm panel, amber highlight, labelled quick actions.
+/// Folders' own menu style: soft panel, accent highlight, labelled quick actions.
 private enum MenuColors {
-    static let background = Theme.dynamic(0x262421, 0xFCFAF6)
-    static let border = Theme.dynamic(0xFFB224, 0x7A5A1E, 0.18, 0.18)
-    static let hover = Theme.dynamic(0xFFB224, 0xFFB224, 0.16, 0.22)
-    static let separator = Theme.dynamic(0xFFFFFF, 0x3A2A10, 0.08, 0.10)
-    static let chip = Theme.dynamic(0xFFFFFF, 0x3A2A10, 0.05, 0.05)
+    static let background = Theme.dynamic(0x262421, 0xFCFCFB)
+    static let border = Theme.dynamic(0xFFFFFF, 0x000000, 0.10, 0.10)
+    static let hover = Theme.selected
+    static let separator = Theme.dynamic(0xFFFFFF, 0x000000, 0.08, 0.10)
+    static let chip = Theme.dynamic(0xFFFFFF, 0x000000, 0.05, 0.04)
 }
 
 struct WinMenuWindowView: View {

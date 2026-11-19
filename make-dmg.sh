@@ -15,4 +15,5 @@ ditto build/Folders.app "$STAGE/Folders.app"
 ln -s /Applications "$STAGE/Applications"
 hdiutil create -volname "Folders" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 "$DMG" >/dev/null
 rm -rf "$STAGE"
+cp "$DMG" build/Folders.dmg   # fixed name used by the "latest" download link
 echo "Made: $DMG ($(du -h "$DMG" | cut -f1))"

@@ -1,6 +1,28 @@
 # Folders
 
-**A file manager for Mac that works the way PC users expect.** If you've switched from a PC, Folders gives you the habits you already know (a "This Mac" drive view, tabs, a navigation pane, a full right-click menu, and Ctrl+C / Ctrl+V-style copy and paste for files) in its own warm, amber design.
+**A file manager for Mac that works the way PC users expect.** If you've switched from a PC, Folders gives you the habits you already know (a "This Mac" drive view, tabs, a navigation pane, a full right-click menu, and Ctrl+C / Ctrl+V-style copy and paste for files) in its own clean design, with a colour you choose (green by default).
+
+## ⬇️ Download
+
+### [**Download Folders for Mac**](https://github.com/hprathod499-dev/folders/releases/latest/download/Folders.dmg)
+
+For macOS 14 or newer, on any Mac (Apple silicon or Intel). Free.
+
+1. **Open** the downloaded `Folders.dmg`.
+2. **Drag** Folders onto the Applications folder.
+3. **Open** Folders from Launchpad.
+
+<details>
+<summary><b>macOS says "Apple could not verify Folders"?</b> (first launch only)</summary>
+
+Folders isn't notarized by Apple yet, so the first time you open it macOS blocks it. To allow it:
+
+1. Click **Done** on the warning.
+2. Open **System Settings → Privacy & Security** and scroll down.
+3. Click **Open Anyway** next to *"Folders" was blocked*, then confirm with your password or Touch ID.
+
+You only need to do this once per version. All the source code is here, so you can see exactly what the app does.
+</details>
 
 Folders is an independent project with its own design and code. It isn't made by, affiliated with, or endorsed by Microsoft or Apple. Windows is a trademark of Microsoft Corporation; Mac and macOS are trademarks of Apple Inc. They're mentioned only to describe who the app is for.
 
@@ -20,26 +42,7 @@ Folders is an independent project with its own design and code. It isn't made by
 - **Search** in the current folder, or **Search This Mac** across the whole Mac with Spotlight
 - **Details pane**, **Preview pane**, and **Space bar preview** (tap to open, hold to peek)
 - **Properties** for files, folders and drives, with a disk-space chart
-- **Dark and light themes**, sizes in MB / GB, and familiar names like `New folder (2)` and `Report - Copy.pdf`
-
-## Install
-
-1. Download **Folders-x.y.dmg** from [Releases](../../releases).
-2. Open it and drag **Folders** onto **Applications**.
-3. Open Folders from Launchpad or Spotlight.
-
-Requires macOS 14 (Sonoma) or newer. Works on Apple silicon and Intel Macs.
-
-### "Apple could not verify Folders…"
-
-Folders isn't notarized by Apple yet, so the first time you open it macOS shows a warning with no Open button. To open it anyway:
-
-1. Click **Done** on the warning.
-2. Open **System Settings → Privacy & Security** and scroll down.
-3. Next to *"Folders" was blocked to protect your Mac*, click **Open Anyway**.
-4. Confirm with your password or Touch ID, then click **Open**.
-
-You only need to do this once per version. The full source code is in this repository, so you can check what it does or build it yourself.
+- **Dark and light themes** and **Customise** to pick your colour (green, teal, violet, coral, rose, graphite or yellow), sizes in MB / GB, and familiar names like `New folder (2)` and `Report - Copy.pdf`
 
 ## Keyboard shortcuts
 

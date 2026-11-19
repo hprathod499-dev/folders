@@ -1,5 +1,6 @@
 import AppKit
 import Quartz
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -31,7 +32,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             debugSnapshotIfRequested(env)
             testMinimizeIfRequested(env)
+            if env["MYMAC_SNAPSHOT"] == nil && env["MYMAC_TEST_MINIMIZE"] == nil { LoginItem.registerOnce() }
         }
+    }
+
+    /// Folders sent by macOS (e.g. opened from another app or Terminal) open in Folders:
+    /// the first one in the starting Home tab, the rest in new tabs.
+    func application(_ sender: NSApplication, open urls: [URL]) {
+        let app = AppState.shared
+        for (i, url) in urls.enumerated() {
+            let target: URL = FileBrowser.isFolder(url) ? url : url.deletingLastPathComponent()
+            if i == 0, app.tabs.count == 1, app.current.location == .home, !app.current.canGoBack {
+                app.current.go(to: .folder(target))
+            } else {
+                app.newTab(.folder(target))
+            }
+        }
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // The app delegate is at the end of the responder chain, so it owns the Quick Look panel.
@@ -128,6 +145,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             exit(0)
         }
+    }
+}
+
+/// "Open Folders when you log in" (Login Items). Turned on once on first launch; changeable in Folder Options.
+@MainActor
+enum LoginItem {
+    static var isOn: Bool { SMAppService.mainApp.status == .enabled }
+
+    static func set(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            FileOps.shared.errorMessage = "Couldn't change the login setting: \(error.localizedDescription)"
+        }
+    }
+
+    static func registerOnce() {
+        let key = "loginItemOffered"
+        guard !AppDefaults.store.bool(forKey: key) else { return }
+        AppDefaults.store.set(true, forKey: key)
+        try? SMAppService.mainApp.register()
     }
 }
 
@@ -231,6 +269,9 @@ struct AppCommands: Commands {
                 .keyboardShortcut(".", modifiers: [.command, .shift])
             Picker("Theme", selection: $prefs.theme) {
                 ForEach(AppTheme.allCases) { Text($0.title).tag($0) }
+            }
+            Picker("Customise", selection: $prefs.accent) {
+                ForEach(AccentColor.allCases) { Text($0 == .green ? "Green (default)" : $0.title).tag($0) }
             }
             Divider()
             Button("Next Tab") { app.selectNext(1) }

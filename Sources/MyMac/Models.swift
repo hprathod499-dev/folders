@@ -295,12 +295,12 @@ struct Place: Identifiable, Hashable {
     static let standard: [Place] = {
         let fm = FileManager.default
         let wanted: [(String, String, Color, FileManager.SearchPathDirectory)] = [
-            ("Desktop", "menubar.dock.rectangle", Color(hex: 0xF2A60C), .desktopDirectory),
-            ("Music", "music.note", Color(hex: 0xF2A60C), .musicDirectory),
-            ("Downloads", "arrow.down.circle.fill", Color(hex: 0xF2A60C), .downloadsDirectory),
-            ("Documents", "doc.text.fill", Color(hex: 0xF2A60C), .documentDirectory),
-            ("Pictures", "photo.fill", Color(hex: 0xF2A60C), .picturesDirectory),
-            ("Videos", "film.fill", Color(hex: 0xF2A60C), .moviesDirectory),
+            ("Desktop", "menubar.dock.rectangle", Theme.brand, .desktopDirectory),
+            ("Music", "music.note", Theme.brand, .musicDirectory),
+            ("Downloads", "arrow.down.circle.fill", Theme.brand, .downloadsDirectory),
+            ("Documents", "doc.text.fill", Theme.brand, .documentDirectory),
+            ("Pictures", "photo.fill", Theme.brand, .picturesDirectory),
+            ("Videos", "film.fill", Theme.brand, .moviesDirectory),
         ]
         return wanted.compactMap { name, symbol, color, dir in
             fm.urls(for: dir, in: .userDomainMask).first.map {
@@ -356,6 +356,52 @@ enum AppTheme: String, CaseIterable, Identifiable {
 
 enum SidePane: String { case none, details, preview }
 
+/// "Customise": the app's accent colour (selection, highlights, icons, folders). Green by default.
+enum AccentColor: String, CaseIterable, Identifiable {
+    case green, teal, violet, coral, rose, graphite, yellow
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    /// Bright shade for dark mode, deeper shade for light mode, and the icon / folder colour.
+    var dark: UInt32 {
+        switch self {
+        case .green: return 0x4ADE80
+        case .teal: return 0x2DD4BF
+        case .violet: return 0xA78BFA
+        case .coral: return 0xFF8A65
+        case .rose: return 0xF472B6
+        case .graphite: return 0xD4D4D8
+        case .yellow: return 0xFFB224
+        }
+    }
+    var light: UInt32 {
+        switch self {
+        case .green: return 0x15803D
+        case .teal: return 0x0F766E
+        case .violet: return 0x6D28D9
+        case .coral: return 0xC2410C
+        case .rose: return 0xBE185D
+        case .graphite: return 0x3F3F46
+        case .yellow: return 0xA75A00
+        }
+    }
+    var icon: UInt32 {
+        switch self {
+        case .green: return 0x22C55E
+        case .teal: return 0x14B8A6
+        case .violet: return 0x8B5CF6
+        case .coral: return 0xF97316
+        case .rose: return 0xEC4899
+        case .graphite: return 0x8E8E93
+        case .yellow: return 0xF2A60C
+        }
+    }
+}
+
+/// The colour in use right now, read by the theme's colours each time they're drawn.
+enum CurrentAccent {
+    nonisolated(unsafe) static var value: AccentColor = .green
+}
+
 /// Where settings are kept. Self-test and snapshot runs get their own throwaway copy,
 /// so they never change your theme, panes, Quick access or Recent folders.
 enum AppDefaults {
@@ -380,6 +426,7 @@ final class Prefs: ObservableObject {
     @Published var compact: Bool { didSet { save(compact, "compact") } }
     @Published var showNavPane: Bool { didSet { save(showNavPane, "showNavPane") } }
     @Published var sidePane: SidePane { didSet { save(sidePane.rawValue, "sidePane") } }
+    @Published var accent: AccentColor { didSet { save(accent.rawValue, "accent"); CurrentAccent.value = accent } }
 
     private init() {
         theme = AppTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .dark
@@ -389,6 +436,8 @@ final class Prefs: ObservableObject {
         compact = defaults.bool(forKey: "compact")
         showNavPane = defaults.object(forKey: "showNavPane") as? Bool ?? true
         sidePane = SidePane(rawValue: defaults.string(forKey: "sidePane") ?? "") ?? .none
+        accent = AccentColor(rawValue: defaults.string(forKey: "accent") ?? "") ?? .green
+        CurrentAccent.value = accent
     }
 
     var colorScheme: ColorScheme? {

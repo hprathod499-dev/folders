@@ -226,7 +226,7 @@ struct MultiProperties: View {
 struct DriveProperties: View {
     let volume: VolumeInfo
     @Environment(\.dismiss) private var dismiss
-    private let usedColor = Color(hex: 0xF2A60C)
+    private var usedColor: Color { Theme.brand }
     private let freeColor = Color(hex: 0x8A8178)
 
     var body: some View {
@@ -418,6 +418,15 @@ struct OptionsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(6)
             }
+            GroupBox("Customise") {
+                VStack(alignment: .leading, spacing: 6) {
+                    AccentSwatches(size: 24)
+                    Text("Colour: \(prefs.accent.title)\(prefs.accent == .green ? " (default)" : "")")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(6)
+            }
             GroupBox("Advanced settings") {
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("Hidden files and folders", selection: $prefs.showHidden) {
@@ -430,6 +439,8 @@ struct OptionsView: View {
                     Toggle("Use check boxes to select items", isOn: $prefs.showCheckboxes)
                     Toggle("Decrease space between items (compact view)", isOn: $prefs.compact)
                     Toggle("Show the navigation pane", isOn: $prefs.showNavPane)
+                    Toggle("Open Folders when you log in", isOn: Binding(
+                        get: { LoginItem.isOn }, set: { LoginItem.set($0) }))
                 }
                 .toggleStyle(.checkbox)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -456,12 +467,13 @@ struct OptionsView: View {
                     prefs.showCheckboxes = true
                     prefs.compact = false
                     prefs.showNavPane = true
+                    prefs.accent = .green
                 }
                 Spacer()
                 Button("OK") { NSApp.keyWindow?.close() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 460, height: 520)
+        .frame(width: 460, height: 600)
     }
 }
