@@ -193,6 +193,7 @@ enum SelfTest {
         await stressTests(root: root, browser: browser)
         await copyPasteDragTests(root: root, browser: browser)
         await realRightClickTests(root: root)
+        await zipTests(root: root, browser: browser)
 
         check("Your real clipboard was not touched", NSPasteboard.general.changeCount == generalBefore)
         privateBoard.releaseGlobally()
@@ -938,6 +939,115 @@ enum SelfTest {
         await rightClick(CGPoint(x: list.midX, y: list.maxY - 40))
         check("Right-clicking again swaps to the new menu", menu.isOpen && menu.root.contains { $0.title == "View" })
         menu.close()
+    }
+
+    // MARK: - Compress to ZIP / Extract All, checked with unzip
+
+    private static func shell(_ tool: String, _ args: [String]) -> (ok: Bool, out: String) {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: tool)
+        p.arguments = args
+        let pipe = Pipe()
+        p.standardOutput = pipe
+        p.standardError = Pipe()
+        do { try p.run() } catch { return (false, "") }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return (p.terminationStatus == 0, String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// Entry names inside a zip (as Windows / Archive Utility would see them).
+    private static func zipEntries(_ zip: URL) -> Set<String> {
+        Set(ZipNames.entries(zip).map { $0.name.precomposedStringWithCanonicalMapping })
+    }
+
+    private static func zipTests(root: URL, browser: FileBrowser) async {
+        let fm = FileManager.default
+        let ops = FileOps.shared
+        let z = root.appendingPathComponent("Zip tests")
+        try? fm.createDirectory(at: z, withIntermediateDirectories: true)
+        func make(_ path: String, _ text: String = "data") -> URL {
+            let u = z.appendingPathComponent(path)
+            try? fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? text.write(to: u, atomically: true, encoding: .utf8)
+            return u
+        }
+        browser.go(to: .folder(z)); browser.reload()
+
+        // One file → name.zip, valid, same contents after Extract All
+        let report = make("report.txt", "hello zip")
+        if let zip = await ops.compress([report]) {
+            check("Zip: one file makes “report.zip”", zip.lastPathComponent == "report.zip")
+            check("Zip: unzip -t says the file is valid", shell("/usr/bin/unzip", ["-tq", zip.path]).ok)
+            check("Zip: it contains report.txt", zipEntries(zip) == ["report.txt"])
+            if let out = await ops.extract(zip) {
+                check("Zip: Extract All gives back the same text",
+                      (try? String(contentsOf: out.appendingPathComponent("report.txt"), encoding: .utf8)) == "hello zip")
+            } else { check("Zip: Extract All works", false) }
+        } else { check("Zip: one file", false) }
+
+        // A folder with a dot in its name keeps its full name
+        let trip = z.appendingPathComponent("Trip 2024.06")
+        _ = make("Trip 2024.06/day1.txt")
+        if let zip = await ops.compress([trip]) {
+            check("Zip: folder “Trip 2024.06” makes “Trip 2024.06.zip”", zip.lastPathComponent == "Trip 2024.06.zip")
+        } else { check("Zip: folder with a dot in its name", false) }
+
+        // Awkward names: leading dash, brackets, spaces, Hindi and emoji
+        let odd = ["-dash.txt", "photo[1].jpg", "with space.txt", "नमस्ते 😀.txt", "*star?.txt"]
+        let oddURLs = odd.map { make("odd/\($0)") }
+        if let zip = await ops.compress(oddURLs) {
+            let entries = zipEntries(zip)
+            check("Zip: names with -, [ ], spaces, Hindi/emoji, * and ? all included",
+                  entries == Set(odd.map { $0.precomposedStringWithCanonicalMapping }))
+            check("Zip: names are flagged UTF-8, so Windows shows Hindi and emoji correctly",
+                  ZipNames.entries(zip).allSatisfy(\.utf8Flag))
+            check("Zip: still valid after marking names (unzip -t)", shell("/usr/bin/unzip", ["-tq", zip.path]).ok)
+            check("Zip: several items are named after the first one", zip.lastPathComponent == "-dash.zip")
+        } else { check("Zip: awkward names", false) }
+
+        // Items from different folders (like search results)
+        let x = make("left/x.txt"), y = make("right/y.txt")
+        if let zip = await ops.compress([x, y]) {
+            check("Zip: files from two different folders both go in", zipEntries(zip) == ["x.txt", "y.txt"])
+        } else { check("Zip: files from different folders", false) }
+
+        // Folder contents: hidden files kept, .DS_Store skipped, empty folders kept
+        let box = z.appendingPathComponent("Box")
+        _ = make("Box/visible.txt"); _ = make("Box/.hidden"); _ = make("Box/.DS_Store", "junk")
+        try? fm.createDirectory(at: box.appendingPathComponent("Empty"), withIntermediateDirectories: true)
+        if let zip = await ops.compress([box]) {
+            let e = zipEntries(zip)
+            check("Zip: keeps hidden files and empty folders", e.contains("Box/.hidden") && e.contains("Box/Empty/"))
+            check("Zip: leaves out .DS_Store junk", !e.contains { $0.hasSuffix(".DS_Store") })
+        } else { check("Zip: folder contents", false) }
+
+        // A big file survives the round trip
+        let big = z.appendingPathComponent("big.bin")
+        var bytes = Data(count: 20 * 1_048_576)
+        bytes.withUnsafeMutableBytes { raw in for i in stride(from: 0, to: raw.count, by: 997) { raw[i] = UInt8(i % 251) } }
+        try? bytes.write(to: big)
+        if let zip = await ops.compress([big]), let out = await ops.extract(zip) {
+            check("Zip: 20 MB file comes back byte-for-byte", (try? Data(contentsOf: out.appendingPathComponent("big.bin"))) == bytes)
+        } else { check("Zip: big file round trip", false) }
+
+        // Feedback, undo, and a clear error when it can't be written
+        browser.compress([report])
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        check("Zip: status bar says what was made", ops.notice?.contains("report (2).zip") == true)
+        check("Zip: the new zip is selected and ready to rename", browser.renamingURL?.lastPathComponent == "report (2).zip")
+        browser.cancelRename()
+        browser.undo()
+        check("Zip: Undo removes the zip", !fm.fileExists(atPath: z.appendingPathComponent("report (2).zip").path))
+        let locked = z.appendingPathComponent("Locked")
+        let inLocked = make("Locked/a.txt")
+        try? fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+        ops.errorMessage = nil
+        let failed = await ops.compress([inLocked])
+        check("Zip: in a read-only folder, a clear error names the zip", failed == nil && ops.errorMessage?.contains("a.zip") == true)
+        try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path)
+        ops.errorMessage = nil
+        browser.go(to: .folder(root))
     }
 
     private static func makeImage(_ url: URL, width: Int, height: Int, type: String, orientation: Int?) {

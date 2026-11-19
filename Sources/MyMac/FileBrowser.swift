@@ -1034,6 +1034,7 @@ final class AppState: ObservableObject {
             return .folder(URL(fileURLWithPath: dir))
         }
         if env["MYMAC_TEST_MINIMIZE"] != nil { return .folder(URL(fileURLWithPath: "/")) }
+        if env["MYMAC_SNAPSHOT"] != nil, let start = env["MYMAC_START"], start.hasPrefix("/") { return .folder(URL(fileURLWithPath: start)) }
         return .home
     }
 

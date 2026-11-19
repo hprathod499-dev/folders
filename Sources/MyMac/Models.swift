@@ -444,7 +444,8 @@ final class Prefs: ObservableObject {
         // Test runs hide the sidebar so they never read iCloud Drive (no permission prompts).
         showNavPane = defaults.object(forKey: "showNavPane") as? Bool
             ?? !(ProcessInfo.processInfo.environment["MYMAC_SELFTEST"] != nil
-                 || ProcessInfo.processInfo.environment["MYMAC_TEST_MINIMIZE"] != nil)
+                 || ProcessInfo.processInfo.environment["MYMAC_TEST_MINIMIZE"] != nil
+                 || ProcessInfo.processInfo.environment["MYMAC_SNAPSHOT"] != nil)
         sidePane = SidePane(rawValue: defaults.string(forKey: "sidePane") ?? "") ?? .none
         confirmDelete = defaults.object(forKey: "confirmDelete") as? Bool ?? true
         accent = AccentColor(rawValue: defaults.string(forKey: "accent") ?? "") ?? .green

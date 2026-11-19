@@ -175,6 +175,8 @@ struct TabStrip: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
+            CaptionButtons()
+                .padding(.trailing, 8)
             ForEach(app.tabs) { tab in
                 TabButton(tab: tab, selected: tab.id == app.selectedID)
             }
@@ -187,7 +189,6 @@ struct TabStrip: View {
             .help("Add a new tab (⌘T)")
             .padding(.bottom, 3)
             Spacer(minLength: 60)
-            CaptionButtons()
         }
         .padding(.leading, 8)
         .frame(height: 44, alignment: .bottom)
@@ -197,21 +198,22 @@ struct TabStrip: View {
     }
 }
 
-/// Window buttons in Folders' own style: small round Minimize, Full screen and Close buttons.
+/// Window buttons in Folders' own style: small round Close, Minimize and Full screen buttons, top left.
 struct CaptionButtons: View {
     var body: some View {
+        // On the left, in the Mac's order: Close, Minimize, Full screen.
         HStack(spacing: 6) {
+            CaptionButton(symbol: "xmark", help: "Close", danger: true) {
+                WindowActions.mainWindow?.performClose(nil)
+            }
             CaptionButton(symbol: "minus", help: "Minimize", danger: false) {
                 WindowActions.minimize()
             }
             CaptionButton(symbol: "arrow.up.left.and.arrow.down.right", help: "Full screen", danger: false) {
                 WindowActions.mainWindow?.toggleFullScreen(nil)
             }
-            CaptionButton(symbol: "xmark", help: "Close", danger: true) {
-                WindowActions.mainWindow?.performClose(nil)
-            }
         }
-        .padding(.trailing, 10)
+        .padding(.leading, 4)
         .frame(maxHeight: .infinity, alignment: .center)
     }
 }

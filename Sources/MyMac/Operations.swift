@@ -290,45 +290,76 @@ final class FileOps: ObservableObject {
 
     // MARK: Zip
 
-    /// "Compress to ZIP file": zip named after the first item, next to it.
+    /// "Compress to ZIP file": a zip next to the first item, named after it (a folder keeps its whole
+    /// name, e.g. "Trip 2024.06.zip"). Items from different folders (search results) all go in,
+    /// awkward names (-x, [1], *, ?) are taken literally, and Mac junk (.DS_Store) is left out.
     func compress(_ urls: [URL]) async -> URL? {
         guard let first = urls.first else { return nil }
         let dir = first.deletingLastPathComponent()
-        let base = urls.count == 1 ? (first.lastPathComponent as NSString).deletingPathExtension
-                                   : (first.lastPathComponent as NSString).deletingPathExtension
-        let dest = Self.uniqueURL(in: dir, name: base + ".zip")
-        let ok = await Self.runTool("/usr/bin/zip", ["-r", "-y", "-q", dest.path] + urls.map(\.lastPathComponent), in: dir)
-        if ok {
-            record(.create([dest], what: "Compress"))
-            return dest
+        let name = first.lastPathComponent
+        let stem = FileBrowser.isFolder(first) ? name : (name as NSString).deletingPathExtension
+        let dest = Self.uniqueURL(in: dir, name: (stem.isEmpty ? name : stem) + ".zip")
+        if urls.count > 3 { say("Compressing \(Self.count(urls.count))…") }
+        // Add each item from its own folder ("./name" so a leading "-" isn't read as an option;
+        // -nw so [ ] * ? aren't wildcards).
+        for url in urls {
+            let result = await Self.runTool("/usr/bin/zip", ["-r", "-y", "-q", "-nw", dest.path, "./" + url.lastPathComponent],
+                                            in: url.deletingLastPathComponent())
+            if !result.ok {
+                try? FileManager.default.removeItem(at: dest)
+                errorMessage = "Couldn't create “\(dest.lastPathComponent)”. \(Self.friendly(result.error))"
+                return nil
+            }
         }
-        errorMessage = "Couldn't create the ZIP file."
-        return nil
+        // Leave out Finder's hidden .DS_Store files (Windows users see them as junk).
+        _ = await Self.runTool("/usr/bin/zip", ["-q", "-d", dest.path, "*.DS_Store", "*/.DS_Store"], in: dir)
+        // Mark names as UTF-8 so Windows shows Hindi, emoji and accents correctly.
+        ZipNames.markUTF8(dest)
+        record(.create([dest], what: "Compress"))
+        say("Compressed \(Self.count(urls.count)) into \(dest.lastPathComponent)")
+        return dest
     }
 
     /// "Extract All": unpacks next to the zip into a folder of the same name.
     func extract(_ zip: URL) async -> URL? {
         let dir = zip.deletingLastPathComponent()
         let dest = Self.uniqueURL(in: dir, name: (zip.lastPathComponent as NSString).deletingPathExtension)
-        let ok = await Self.runTool("/usr/bin/ditto", ["-x", "-k", zip.path, dest.path], in: dir)
-        if ok {
+        let result = await Self.runTool("/usr/bin/ditto", ["-x", "-k", zip.path, dest.path], in: dir)
+        if result.ok {
             record(.create([dest], what: "Extract"))
+            say("Extracted “\(zip.lastPathComponent)” into \(dest.lastPathComponent)")
             return dest
         }
-        errorMessage = "Can't open the folder. The compressed (zipped) folder “\(zip.lastPathComponent)” is invalid."
+        try? FileManager.default.removeItem(at: dest)
+        errorMessage = "Can't open the folder. The compressed (zipped) folder “\(zip.lastPathComponent)” is invalid or can't be read."
         return nil
     }
 
-    nonisolated private static func runTool(_ path: String, _ args: [String], in dir: URL) async -> Bool {
+    /// Turns a tool's error output into something readable.
+    private static func friendly(_ error: String) -> String {
+        let text = error.lowercased()
+        if text.contains("permission denied") || text.contains("read-only") || text.contains("could not create") {
+            return "You don't have permission to save files in this folder."
+        }
+        if text.contains("no space") { return "There isn't enough free space on the disk." }
+        let line = error.split(separator: "\n").first.map(String.init) ?? ""
+        return line.isEmpty ? "Something went wrong while compressing." : line
+    }
+
+    nonisolated private static func runTool(_ path: String, _ args: [String], in dir: URL) async -> (ok: Bool, error: String) {
         await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: path)
             process.arguments = args
             process.currentDirectoryURL = dir
             process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus == 0) }
-            do { try process.run() } catch { continuation.resume(returning: false) }
+            let errPipe = Pipe()
+            process.standardError = errPipe
+            process.terminationHandler = { p in
+                let data = errPipe.fileHandleForReading.readDataToEndOfFile()
+                continuation.resume(returning: (p.terminationStatus == 0, String(data: data, encoding: .utf8) ?? ""))
+            }
+            do { try process.run() } catch { continuation.resume(returning: (false, error.localizedDescription)) }
         }
     }
 
