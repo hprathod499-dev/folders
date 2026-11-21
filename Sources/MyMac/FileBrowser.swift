@@ -69,6 +69,15 @@ enum Location: Hashable {
     case gallery
     case thisMac
     case folder(URL)
+    /// Files with this Finder tag.
+    case tag(String)
+    /// The list of every tag.
+    case allTags
+
+    var isTag: Bool {
+        if case .tag = self { return true }
+        return false
+    }
 
     var normalized: Location {
         if case .folder(let url) = self { return .folder(url.normalizedFolder) }
@@ -107,6 +116,8 @@ final class FileBrowser: ObservableObject, Identifiable {
     @Published private(set) var favoriteItems: [FileItem] = []
     @Published private(set) var galleryItems: [FileItem] = []
     @Published private(set) var isLoadingGallery = false
+    @Published private(set) var tagItems: [FileItem] = []
+    @Published private(set) var isLoadingTag = false
     @Published private(set) var searchResults: [FileItem]?
     @Published private(set) var isSearching = false
     @Published private(set) var volumes: [VolumeInfo] = []
@@ -183,6 +194,8 @@ final class FileBrowser: ObservableObject, Identifiable {
         case .home: return "Home"
         case .gallery: return "Gallery"
         case .thisMac: return "This Mac"
+        case .tag(let name): return name
+        case .allTags: return "All Tags"
         case .folder(let url):
             if let place = Place.special(for: url) { return place.name }
             if let volume = volumes.first(where: { $0.url == url.normalizedFolder }) { return volume.displayName }
@@ -195,12 +208,19 @@ final class FileBrowser: ObservableObject, Identifiable {
     var canGoUp: Bool { currentURL != nil }
     var searchQuery: String { searchText.trimmingCharacters(in: .whitespacesAndNewlines) }
     var isSearchResults: Bool { searchResults != nil }
+    /// Lists whose files come from many folders get a Folder column.
+    var showsFolderColumn: Bool {
+        if case .tag = location { return true }
+        return isSearchResults
+    }
 
     private var baseItems: [FileItem] {
         switch location {
         case .home: return recentItems
         case .gallery: return galleryItems
         case .thisMac: return searchResults ?? []
+        case .tag: return tagItems
+        case .allTags: return []
         case .folder: return searchResults ?? items
         }
     }
@@ -506,6 +526,20 @@ final class FileBrowser: ObservableObject, Identifiable {
                 self?.galleryItems = photos
                 self?.isLoadingGallery = false
             }
+        case .tag(let name):
+            items = []
+            isLoadingTag = true
+            TagStore.shared.refresh()
+            loadTask = Task { [weak self] in
+                let tagged = await TagStore.files(tagged: name)
+                guard !Task.isCancelled, let self else { return }
+                self.tagItems = tagged
+                self.isLoadingTag = false
+                self.selection = self.selection.intersection(Set(tagged.map(\.url)))
+            }
+        case .allTags:
+            items = []
+            TagStore.shared.refresh()
         case .folder(let url):
             var options: FileManager.DirectoryEnumerationOptions = []
             if !prefs.showHidden { options.insert(.skipsHiddenFiles) }
@@ -970,6 +1004,107 @@ final class FileBrowser: ObservableObject, Identifiable {
 
     func revealInFinder(_ urls: Set<URL>) {
         NSWorkspace.shared.activateFileViewerSelecting(Array(urls))
+    }
+
+    // MARK: - Tags
+
+    /// True when every one of these files has the tag (shown with a check mark in the Tags menu).
+    func allHave(tag name: String, _ urls: Set<URL>) -> Bool {
+        !urls.isEmpty && urls.allSatisfy { TagStore.tagNames(of: $0).contains(name) }
+    }
+
+    /// Like Finder: if every selected file has the tag it's removed from all of them,
+    /// otherwise it's added to the ones that don't have it.
+    func toggleTag(_ name: String, on urls: Set<URL>) {
+        guard !urls.isEmpty else { return }
+        let add = !allHave(tag: name, urls)
+        let failed = TagStore.set(name, on: Array(urls), add: add)
+        if !failed.isEmpty {
+            ops.errorMessage = "Couldn't change the tags of \(failed.map(\.lastPathComponent).joined(separator: ", "))."
+        }
+        if add { TagStore.shared.remember(name) }
+        refreshAfterTagChange(name, removed: add ? [] : urls)
+    }
+
+    /// Asks for a new tag name and adds it to the files.
+    func addNewTag(to urls: Set<URL>) {
+        guard !urls.isEmpty else { return }
+        let alert = NSAlert()
+        alert.messageText = "New tag"
+        alert.informativeText = urls.count == 1
+            ? "Add a tag to \(urls.first!.lastPathComponent)."
+            : "Add a tag to \(urls.count) items."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.placeholderString = "Tag name"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let failed = TagStore.set(name, on: Array(urls), add: true)
+        if !failed.isEmpty {
+            ops.errorMessage = "Couldn't tag \(failed.map(\.lastPathComponent).joined(separator: ", "))."
+        }
+        TagStore.shared.remember(name)
+        refreshAfterTagChange(name, removed: [])
+    }
+
+    /// Asks for a new name, then renames the tag on every file that has it.
+    func promptRenameTag(_ old: String) {
+        let alert = NSAlert()
+        alert.messageText = "Rename tag"
+        alert.informativeText = "Every file tagged “\(old)” gets the new name. The colour stays the same."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.stringValue = old
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let new = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !new.isEmpty, new != old else { return }
+        Task { await renameTag(old, to: new) }
+    }
+
+    func renameTag(_ old: String, to new: String) async {
+        let onScreen = (items + tagItems).map(\.url)
+        let failed = await TagStore.shared.rename(old, to: new, alsoOn: onScreen)
+        if !failed.isEmpty {
+            ops.errorMessage = "Couldn't rename the tag on \(failed.map(\.lastPathComponent).joined(separator: ", "))."
+        }
+        if case .tag(let shown) = location, shown == old {
+            go(to: .tag(new))
+        } else if case .tag = location {
+            tagItems = tagItems.map { FileItem(url: $0.url) }
+        } else {
+            reload()
+        }
+    }
+
+    private func refreshAfterTagChange(_ name: String, removed: Set<URL>) {
+        if case .tag(let shown) = location {
+            // Spotlight lags a little, so drop untagged files from this tag's list right away.
+            if shown == name && !removed.isEmpty {
+                tagItems.removeAll { removed.contains($0.url) }
+                selection.subtract(removed)
+            } else {
+                tagItems = tagItems.map { FileItem(url: $0.url) }
+            }
+        } else {
+            reload()
+        }
+    }
+
+    /// Opens macOS's AirDrop window for the selected files (works with Finder quit).
+    func airDrop(_ urls: Set<URL>) {
+        let items = urls.sorted { $0.path < $1.path }
+        guard let service = NSSharingService(named: .sendViaAirDrop), service.canPerform(withItems: items) else {
+            ops.errorMessage = "AirDrop isn't available. Turn on Wi-Fi and Bluetooth, then try again."
+            return
+        }
+        service.perform(withItems: items)
     }
 
     func copyPath(_ urls: Set<URL>) {

@@ -21,10 +21,7 @@ struct SidebarView: View {
 
                 SidebarDivider()
 
-                ForEach(pins.pinned, id: \.self) { url in
-                    SidebarRow(title: displayName(url), icon: AnyView(FolderGlyph(url: url)),
-                               location: .folder(url), folderURL: url, pinned: true)
-                }
+                PinnedFolders(displayName: displayName)
                 ForEach(pins.recent, id: \.self) { url in
                     SidebarRow(title: displayName(url), icon: AnyView(FolderGlyph(url: url)),
                                location: .folder(url), folderURL: url)
@@ -33,6 +30,10 @@ struct SidebarView: View {
                 SidebarDivider()
 
                 ThisPCNode()
+
+                SidebarDivider()
+
+                SidebarTags()
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 4)
@@ -42,6 +43,89 @@ struct SidebarView: View {
 
     private func displayName(_ url: URL) -> String {
         Place.special(for: url)?.name ?? FileManager.default.displayName(atPath: url.path)
+    }
+}
+
+/// Pinned folders. Drag one up or down to rearrange; the others slide out of the way.
+/// Desktop is locked at the top. (Dropping files onto a folder still moves them into it.)
+struct PinnedFolders: View {
+    @ObservedObject private var pins = PinStore.shared
+    let displayName: (URL) -> String
+    @State private var dragging: URL?
+    @State private var dragOffset: CGFloat = 0
+    /// Distance already turned into moves during this drag.
+    @State private var consumed: CGFloat = 0
+    private let rowStep: CGFloat = 33   // row height 32 + spacing 1
+
+    var body: some View {
+        ForEach(pins.pinned, id: \.self) { url in
+            let locked = pins.isLocked(url)
+            SidebarRow(title: displayName(url), icon: AnyView(FolderGlyph(url: url)),
+                       location: .folder(url), folderURL: url, pinned: true, locked: locked)
+                .offset(y: dragging == url ? dragOffset : 0)
+                .zIndex(dragging == url ? 1 : 0)
+                .shadow(color: .black.opacity(dragging == url ? 0.35 : 0), radius: 6, y: 2)
+                .gesture(reorderGesture(url), including: locked ? .none : .all)
+        }
+    }
+
+    private func reorderGesture(_ url: URL) -> some Gesture {
+        DragGesture(minimumDistance: 6)
+            .onChanged { value in
+                if dragging == nil { dragging = url; consumed = 0 }
+                let pending = value.translation.height - consumed
+                let steps = Int((pending / rowStep).rounded())
+                if steps != 0 {
+                    let moved = withAnimation(.easeOut(duration: 0.15)) {
+                        pins.move(url, by: steps, save: false)
+                    }
+                    consumed += CGFloat(moved) * rowStep
+                }
+                dragOffset = value.translation.height - consumed
+            }
+            .onEnded { _ in
+                withAnimation(.easeOut(duration: 0.15)) { dragOffset = 0 }
+                dragging = nil
+                consumed = 0
+                pins.saveOrder()
+            }
+    }
+}
+
+/// The Tags section: each tag opens a list of the files with it; "All Tags…" lists every tag.
+struct SidebarTags: View {
+    @ObservedObject private var store = TagStore.shared
+    /// Click the "Tags" heading to hide or show the list; remembered between launches.
+    @AppStorage("sidebarTagsCollapsed", store: AppDefaults.store) private var collapsed = false
+    @State private var hovering = false
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { collapsed.toggle() }
+        } label: {
+            HStack(spacing: 6) {
+                Text("Tags")
+                    .font(.system(size: 11.5, weight: .semibold))
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .rotationEffect(.degrees(collapsed ? -90 : 0))
+                Spacer()
+            }
+            .foregroundStyle(hovering ? Theme.text : Theme.secondary)
+            .padding(.leading, 10)
+            .padding(.bottom, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(collapsed ? "Show tags" : "Hide tags")
+
+        if !collapsed {
+            ForEach(store.tags) { tag in
+                SidebarRow(title: tag.name, icon: AnyView(TagDot(tag: tag)), location: .tag(tag.name))
+            }
+            SidebarRow(title: "All Tags…", icon: AnyView(LocationIcon(location: .allTags)), location: .allTags)
+        }
     }
 }
 
@@ -59,6 +143,8 @@ struct SidebarRow: View {
     var folderURL: URL?
     var depth = 0
     var pinned = false
+    /// Desktop: fixed at the top, shown with a lock instead of a pin.
+    var locked = false
     var expandable = false
     var expanded = false
     var onToggle: (() -> Void)?
@@ -87,7 +173,13 @@ struct SidebarRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 2)
-            if pinned {
+            if locked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.secondary)
+                    .padding(.trailing, 7)
+                    .help("Desktop always stays at the top")
+            } else if pinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10))
                     .rotationEffect(.degrees(45))
@@ -109,6 +201,7 @@ struct SidebarRow: View {
         .help(title)
         .winContextMenu { () -> Menus.Built in
             if let url = folderURL { return Menus.folderLink(browser, url) }
+            if case .tag(let name) = location { return Menus.tag(browser, name) }
             return ([], nil)
         }
         .modifier(DropInto(folder: folderURL, isTargeted: $dropTarget))
@@ -239,6 +332,8 @@ struct MainArea: View {
                 DetailsListView()
             }
         case .folder(let url): FolderContentView(folder: url)
+        case .tag: TagContentView()
+        case .allTags: AllTagsView()
         }
     }
 }
@@ -270,8 +365,9 @@ struct EmptyMessage: View {
     @EnvironmentObject private var browser: FileBrowser
 
     var body: some View {
-        if browser.visibleCount == 0 && !browser.isSearching {
-            Text(browser.searchQuery.isEmpty ? "This folder is empty." : "No items match your search.")
+        if browser.visibleCount == 0 && !browser.isSearching && !browser.isLoadingTag {
+            Text(!browser.searchQuery.isEmpty ? "No items match your search."
+                 : browser.location.isTag ? "No items have this tag." : "This folder is empty.")
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.text)
                 .frame(maxWidth: .infinity)
@@ -521,7 +617,7 @@ struct DetailsListView: View {
     @FocusState private var focused: Bool
 
     private var columns: [Column] {
-        browser.isSearchResults ? [.name, .date, .type, .size, .folder] : [.name, .date, .type, .size]
+        browser.showsFolderColumn ? [.name, .date, .type, .size, .folder] : [.name, .date, .type, .size]
     }
 
     var body: some View {
@@ -763,6 +859,7 @@ struct FileRow: View {
                             Text(item.displayName(showExtensions: prefs.showExtensions))
                                 .lineLimit(1)
                                 .truncationMode(.tail)
+                            if !item.tags.isEmpty { TagDots(names: item.tags) }
                         }
                     }
                     .padding(.leading, 4)

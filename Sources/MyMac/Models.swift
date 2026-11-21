@@ -12,12 +12,14 @@ struct FileItem: Identifiable, Hashable {
     let modified: Date
     let created: Date?
     let kind: String
+    /// Finder tags on this item.
+    let tags: [String]
 
     var id: URL { url }
 
     static let resourceKeys: [URLResourceKey] = [
         .nameKey, .isDirectoryKey, .isPackageKey, .fileSizeKey,
-        .contentModificationDateKey, .creationDateKey, .localizedTypeDescriptionKey,
+        .contentModificationDateKey, .creationDateKey, .localizedTypeDescriptionKey, .tagNamesKey,
     ]
 
     init(url: URL) {
@@ -32,6 +34,7 @@ struct FileItem: Identifiable, Hashable {
         self.modified = values?.contentModificationDate ?? .distantPast
         self.created = values?.creationDate
         self.kind = values?.localizedTypeDescription ?? (isDir ? "Folder" : "Document")
+        self.tags = values?.tagNames ?? []
     }
 
     var icon: NSImage { IconCache.shared.icon(for: url) }
@@ -433,6 +436,7 @@ final class Prefs: ObservableObject {
     @Published var showNavPane: Bool { didSet { save(showNavPane, "showNavPane") } }
     @Published var sidePane: SidePane { didSet { save(sidePane.rawValue, "sidePane") } }
     @Published var confirmDelete: Bool { didSet { save(confirmDelete, "confirmDelete") } }
+    @Published var quitFinderAtStart: Bool { didSet { save(quitFinderAtStart, "quitFinderAtStart") } }
     @Published var accent: AccentColor { didSet { save(accent.rawValue, "accent"); CurrentAccent.value = accent } }
 
     private init() {
@@ -448,6 +452,7 @@ final class Prefs: ObservableObject {
                  || ProcessInfo.processInfo.environment["MYMAC_SNAPSHOT"] != nil)
         sidePane = SidePane(rawValue: defaults.string(forKey: "sidePane") ?? "") ?? .none
         confirmDelete = defaults.object(forKey: "confirmDelete") as? Bool ?? true
+        quitFinderAtStart = defaults.bool(forKey: "quitFinderAtStart")
         accent = AccentColor(rawValue: defaults.string(forKey: "accent") ?? "") ?? .green
         CurrentAccent.value = accent
     }
@@ -492,6 +497,8 @@ final class PinStore: ObservableObject {
             pinned = Place.standard.map(\.url)
         }
         recent = Self.existing(defaults.stringArray(forKey: recentKey) ?? [], folders: true)
+            .filter { !Self.isInICloudDrive($0) }
+        keepDesktopFirst()
         favorites = Self.existing(defaults.stringArray(forKey: favoritesKey) ?? [], folders: false)
     }
 
@@ -509,9 +516,47 @@ final class PinStore: ObservableObject {
         } else {
             pinned.append(folder)
             recent.removeAll { $0 == folder }
+            keepDesktopFirst()
         }
         save()
     }
+
+    // MARK: Order of pinned folders (Desktop stays at the top; the rest can be rearranged)
+
+    /// Desktop is fixed at the top of the pinned folders.
+    func isLocked(_ url: URL) -> Bool {
+        guard let desktop = Place.desktop else { return false }
+        return url.standardizedFileURL.path == desktop.standardizedFileURL.path
+    }
+
+    /// The first position other folders can use (1 when Desktop is pinned, else 0).
+    private var firstMovable: Int { pinned.first.map(isLocked) == true ? 1 : 0 }
+
+    private func keepDesktopFirst() {
+        if let i = pinned.firstIndex(where: isLocked), i != 0 {
+            pinned.insert(pinned.remove(at: i), at: 0)
+        }
+    }
+
+    func canMove(_ url: URL, by offset: Int) -> Bool {
+        guard !isLocked(url), let i = pinned.firstIndex(of: url.normalizedFolder) else { return false }
+        let target = i + offset
+        return target >= firstMovable && target < pinned.count
+    }
+
+    /// Moves a pinned folder `offset` places (negative is up). Returns how far it actually moved.
+    @discardableResult
+    func move(_ url: URL, by offset: Int, save shouldSave: Bool = true) -> Int {
+        let folder = url.normalizedFolder
+        guard !isLocked(folder), let i = pinned.firstIndex(of: folder) else { return 0 }
+        let target = min(max(i + offset, firstMovable), pinned.count - 1)
+        guard target != i else { return 0 }
+        pinned.insert(pinned.remove(at: i), at: target)
+        if shouldSave { save() }
+        return target - i
+    }
+
+    func saveOrder() { save() }
 
     func isFavorite(_ url: URL) -> Bool { favorites.contains { $0.standardizedFileURL == url.standardizedFileURL } }
 
@@ -531,11 +576,19 @@ final class PinStore: ObservableObject {
 
     func noteVisit(_ url: URL) {
         let folder = url.normalizedFolder
-        guard !isPinned(folder), folder != Place.home, folder.path != "/" else { return }
+        guard !isPinned(folder), folder != Place.home, folder.path != "/", !Self.isInICloudDrive(folder) else { return }
         recent.removeAll { $0 == folder }
         recent.insert(folder, at: 0)
         if recent.count > 5 { recent.removeLast(recent.count - 5) }
         save()
+    }
+
+    /// iCloud Drive and its folders already have their own tree in the navigation pane,
+    /// so they're left out of the recent list (no duplicates).
+    private static func isInICloudDrive(_ url: URL) -> Bool {
+        guard let cloud = Place.iCloudDrive?.standardizedFileURL.path else { return false }
+        let path = url.standardizedFileURL.path
+        return path == cloud || path.hasPrefix(cloud + "/")
     }
 
     private func save() {

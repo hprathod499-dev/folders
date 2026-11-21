@@ -659,6 +659,10 @@ struct CommandBar: View {
             IconCommand(symbol: "trash", help: "Delete (⌘⌫)", enabled: hasSelection) {
                 browser.requestTrash(browser.selection)
             }
+            AirDropButton(enabled: hasSelection) {
+                browser.airDrop(browser.selection)
+            }
+            TagMenuButton(enabled: hasSelection)
 
             BarDivider()
 
@@ -864,6 +868,54 @@ struct IconCommand: View {
     }
 }
 
+/// AirDrop button drawn as a line icon, so it takes the toolbar's colours like the other icons.
+struct AirDropButton: View {
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            AirDropGlyph()
+                .frame(width: 17, height: 17)
+                .frame(width: 38, height: 34)
+        }
+        .buttonStyle(BarButtonStyle())
+        .disabled(!enabled)
+        .help("AirDrop")
+    }
+}
+
+/// The AirDrop mark: a dot inside three rings that open at the bottom.
+struct AirDropGlyph: View {
+    var lineWidth: CGFloat = 1.4
+
+    var body: some View {
+        Canvas { context, size in
+            let side = min(size.width, size.height)
+            let center = CGPoint(x: size.width / 2, y: size.height / 2)
+            let style = StrokeStyle(lineWidth: lineWidth, lineCap: .round)
+            // Three rings, each open at the bottom (on screen 90° points straight down).
+            let gap = 46.0 * .pi / 180
+            for fraction in [0.16, 0.31, 0.46] {
+                let radius = side * fraction
+                let start = Double.pi / 2 + gap / 2   // left edge of the bottom gap, then round over the top
+                let sweep = 2 * Double.pi - gap
+                var ring = Path()
+                let steps = 48
+                for step in 0...steps {
+                    let angle = start + sweep * Double(step) / Double(steps)
+                    let point = CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))
+                    if step == 0 { ring.move(to: point) } else { ring.addLine(to: point) }
+                }
+                context.stroke(ring, with: .style(.foreground), style: style)
+            }
+            let dot = side * 0.065
+            context.fill(Path(ellipseIn: CGRect(x: center.x - dot, y: center.y - dot, width: dot * 2, height: dot * 2)),
+                         with: .style(.foreground))
+        }
+    }
+}
+
 struct BarDivider: View {
     var body: some View {
         Rectangle().fill(Theme.divider).frame(width: 1, height: 26).padding(.horizontal, 6)
@@ -1060,6 +1112,10 @@ struct StatusBar: View {
             let drives = browser.volumes.filter { !$0.isDiskImage }.count
             return drives == 1 ? "1 item" : "\(drives) items"
         }
+        if browser.location == .allTags {
+            let tags = TagStore.shared.tags.count
+            return tags == 1 ? "1 tag" : "\(tags) tags"
+        }
         let count = browser.visibleCount
         return count == 1 ? "1 item" : "\(count) items"
     }
@@ -1189,6 +1245,8 @@ struct LocationIcon: View {
         case .gallery: Glyph(symbol: "photo.stack.fill", color: Theme.brand, size: size)
         case .thisMac: Glyph(symbol: "laptopcomputer", color: Theme.brand, size: size)
         case .folder(let url): FolderGlyph(url: url, size: size)
+        case .tag(let name): TagDot(tag: TagStore.shared.tag(named: name), size: size * 0.7)
+        case .allTags: Glyph(symbol: "tag", color: Theme.secondary, size: size)
         }
     }
 }

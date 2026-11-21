@@ -442,6 +442,9 @@ struct OptionsView: View {
                     Toggle("Ask before moving items to the Trash", isOn: $prefs.confirmDelete)
                     Toggle("Open Folders when you log in", isOn: Binding(
                         get: { LoginItem.isOn }, set: { LoginItem.set($0) }))
+                    Toggle("Quit Finder when Folders starts", isOn: Binding(
+                        get: { prefs.quitFinderAtStart },
+                        set: { prefs.quitFinderAtStart = $0; FinderControl.settingChanged($0) }))
                 }
                 .toggleStyle(.checkbox)
                 .frame(maxWidth: .infinity, alignment: .leading)

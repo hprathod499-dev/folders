@@ -32,7 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             debugSnapshotIfRequested(env)
             testMinimizeIfRequested(env)
-            if env["MYMAC_SNAPSHOT"] == nil && env["MYMAC_TEST_MINIMIZE"] == nil { LoginItem.registerOnce() }
+            if env["MYMAC_SNAPSHOT"] == nil && env["MYMAC_TEST_MINIMIZE"] == nil {
+                LoginItem.registerOnce()
+                FinderControl.startIfEnabled()
+            }
         }
     }
 
@@ -108,6 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let browser = AppState.shared.current
             if let theme = env["MYMAC_THEME"], let t = AppTheme(rawValue: theme) { Prefs.shared.theme = t }
             if let start = env["MYMAC_START"] { browser.goTo(path: start) }
+            if env["MYMAC_NAVPANE"] != nil { Prefs.shared.showNavPane = true }
+            if let tag = env["MYMAC_TAG"] { browser.go(to: tag.isEmpty ? .allTags : .tag(tag)) }
             if let view = env["MYMAC_VIEW"], let mode = ViewMode(rawValue: view) { browser.viewMode = mode }
             if let pane = env["MYMAC_PANE"], let p = SidePane(rawValue: pane) { Prefs.shared.sidePane = p }
             if let query = env["MYMAC_SEARCH"] { browser.searchText = query; browser.updateSearch() }

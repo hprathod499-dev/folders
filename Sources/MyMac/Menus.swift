@@ -62,6 +62,7 @@ enum Menus {
             }
         }
         main += [
+            tagsSubmenu(browser, urls),
             .item("Compress to ZIP file", "doc.zipper") { browser.compress(urls) },
             .item("Copy as path", "doc.on.clipboard", shortcut: "⇧⌘C") { browser.copyPath(urls) },
             .item("Properties", "wrench.adjustable", shortcut: "⌘I") { browser.showProperties(urls) },
@@ -94,6 +95,7 @@ enum Menus {
             })
         }
         classic += [
+            tagsSubmenu(browser, urls),
             .item("Compress to ZIP file") { browser.compress(urls) },
             .item("Copy as path") { browser.copyPath(urls) },
             .item("Share…") { WinMenu.shared.share(list) },
@@ -109,6 +111,28 @@ enum Menus {
             .item("Properties") { browser.showProperties(urls) },
         ]
         return (main, classic)
+    }
+
+    /// Right-click on a tag in the navigation pane.
+    static func tag(_ browser: FileBrowser, _ name: String) -> Built {
+        let entries: [WinMenuEntry] = [
+            .item("Open", "tag") { browser.go(to: .tag(name)) },
+            .item("Open in new tab", "plus.rectangle.on.rectangle") { AppState.shared.newTab(.tag(name)) },
+            .separator,
+            .item("Rename tag…", "pencil") { browser.promptRenameTag(name) },
+        ]
+        return (entries, nil)
+    }
+
+    /// Tags ▸ each tag (• when every selected item has it) and "New tag…".
+    private static func tagsSubmenu(_ browser: FileBrowser, _ urls: Set<URL>) -> WinMenuEntry {
+        var entries: [WinMenuEntry] = TagStore.shared.tags.map { tag in
+            .item(tag.name, image: TagImages.dot(tag), radio: browser.allHave(tag: tag.name, urls)) {
+                browser.toggleTag(tag.name, on: urls)
+            }
+        }
+        entries += [.separator, .item("New tag…", "plus") { browser.addNewTag(to: urls) }]
+        return .submenu("Tags", "tag", entries)
     }
 
     private static func openWith(_ browser: FileBrowser, _ url: URL) -> WinMenuEntry {
@@ -216,6 +240,12 @@ enum Menus {
     // MARK: Sidebar folders, Quick access tiles, drives, tabs
 
     static func folderLink(_ browser: FileBrowser, _ url: URL) -> Built {
+        let pins = PinStore.shared
+        // Rearranging pinned folders (Desktop stays first).
+        let order: [WinMenuEntry] = pins.isPinned(url) && !pins.isLocked(url) ? [
+            .item("Move up", "arrow.up", enabled: pins.canMove(url, by: -1)) { pins.move(url, by: -1) },
+            .item("Move down", "arrow.down", enabled: pins.canMove(url, by: 1)) { pins.move(url, by: 1) },
+        ] : []
         let main: [WinMenuEntry] = [
             .toolbar([
                 WinToolButton(symbol: "doc.on.doc", help: "Copy (⌘C)") { browser.copy([url]) },
@@ -226,6 +256,7 @@ enum Menus {
             .item(PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar", "pin") {
                 PinStore.shared.toggle(url)
             },
+        ] + order + [
             .item("Compress to ZIP file", "doc.zipper") { browser.compress([url]) },
             .item("Copy as path", "doc.on.clipboard", shortcut: "⇧⌘C") { browser.copyPath([url]) },
             .item("Properties", "wrench.adjustable", shortcut: "⌘I") { browser.propertiesTarget = PropertiesTarget(urls: [url]) },
@@ -239,6 +270,7 @@ enum Menus {
             .item("Open in new tab") { AppState.shared.newTab(.folder(url)) },
             .separator,
             .item(PinStore.shared.isPinned(url) ? "Unpin from sidebar" : "Pin to sidebar") { PinStore.shared.toggle(url) },
+        ] + order + [
             .item("Copy as path") { browser.copyPath([url]) },
             .item("Show in Finder") { browser.revealInFinder([url]) },
             .separator,

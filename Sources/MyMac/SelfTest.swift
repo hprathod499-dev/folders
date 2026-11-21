@@ -194,6 +194,9 @@ enum SelfTest {
         await copyPasteDragTests(root: root, browser: browser)
         await realRightClickTests(root: root)
         await zipTests(root: root, browser: browser)
+        tagTests(root: root, browser: browser)
+        await tagRenameTests(root: root, browser: browser)
+        pinOrderTests()
 
         check("Your real clipboard was not touched", NSPasteboard.general.changeCount == generalBefore)
         privateBoard.releaseGlobally()
@@ -202,6 +205,81 @@ enum SelfTest {
         print("SELFTEST: \(results.count - failed.count)/\(results.count) passed")
         fflush(stdout)
         exit(failed.isEmpty ? 0 : 1)
+    }
+
+    // MARK: - Finder tags
+
+    private static func tagTests(root: URL, browser: FileBrowser) {
+        let fm = FileManager.default
+        let dir = root.appendingPathComponent("Tag tests")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let a = dir.appendingPathComponent("a.txt"), b = dir.appendingPathComponent("b.txt")
+        try? "a".write(to: a, atomically: true, encoding: .utf8)
+        try? "b".write(to: b, atomically: true, encoding: .utf8)
+        browser.go(to: .folder(dir))
+
+        browser.toggleTag("Orange", on: [a])
+        check("Tag: adds a tag", TagStore.tagNames(of: a) == ["Orange"])
+        check("Tag: new tag shows in the file list", browser.items.first { $0.url == a }?.tags == ["Orange"])
+        browser.toggleTag("Work", on: [a])
+        check("Tag: second tag keeps the first", Set(TagStore.tagNames(of: a)) == ["Orange", "Work"])
+        browser.toggleTag("Orange", on: [a])
+        check("Tag: ticking again removes only that tag", TagStore.tagNames(of: a) == ["Work"])
+        browser.toggleTag("Work", on: [a, b])
+        check("Tag: mixed selection adds to the one missing it",
+              TagStore.tagNames(of: a) == ["Work"] && TagStore.tagNames(of: b) == ["Work"])
+        check("Tag: both files count as tagged", browser.allHave(tag: "Work", [a, b]))
+        browser.toggleTag("Work", on: [a, b])
+        check("Tag: all tagged, so it's removed from all",
+              TagStore.tagNames(of: a).isEmpty && TagStore.tagNames(of: b).isEmpty)
+        browser.goBack()
+    }
+
+    /// Pinned folders can be rearranged; Desktop stays at the top. (Uses the test run's own settings.)
+    private static func pinOrderTests() {
+        let pins = PinStore.shared
+        guard let desktop = Place.desktop?.normalizedFolder, pins.pinned.count >= 3,
+              pins.pinned.first == desktop else {
+            check("Pin order: Desktop starts at the top", false)
+            return
+        }
+        let second = pins.pinned[1], third = pins.pinned[2]
+        check("Pin order: Desktop can't be moved", pins.move(desktop, by: 2) == 0 && pins.pinned.first == desktop)
+        check("Pin order: nothing goes above Desktop", pins.move(second, by: -1) == 0 && pins.pinned[1] == second)
+        check("Pin order: Move down swaps with the next one", pins.move(second, by: 1) == 1
+              && pins.pinned[1] == third && pins.pinned[2] == second)
+        pins.move(second, by: -1)
+        let last = pins.pinned.last!
+        check("Pin order: dragging far up stops below Desktop", pins.move(last, by: -50) < 0
+              && pins.pinned[1] == last && pins.pinned.first == desktop)
+        pins.toggle(desktop)
+        pins.toggle(desktop)
+        check("Pin order: re-pinned Desktop goes back to the top", pins.pinned.first == desktop)
+        check("Pin order: Move up is off for the folder under Desktop", !pins.canMove(last, by: -1))
+    }
+
+    private static func tagRenameTests(root: URL, browser: FileBrowser) async {
+        let dir = root.appendingPathComponent("Tag tests")
+        let a = dir.appendingPathComponent("a.txt"), b = dir.appendingPathComponent("b.txt")
+        browser.go(to: .folder(dir))
+        browser.toggleTag("Orange", on: [a])
+        browser.toggleTag("Draft", on: [a, b])
+        let orangeColor = TagStore.tagsOnFile(atPath: a.path).first { $0.name == "Orange" }?.colorIndex
+        await browser.renameTag("Draft", to: "Final")
+        check("Tag rename: renamed on every file",
+              TagStore.tagNames(of: a).contains("Final") && TagStore.tagNames(of: b) == ["Final"])
+        check("Tag rename: other tags stay", TagStore.tagNames(of: a).contains("Orange")
+              && !TagStore.tagNames(of: a).contains("Draft"))
+        await browser.renameTag("Orange", to: "Citrus")
+        check("Tag rename: colour is kept",
+              TagStore.tagsOnFile(atPath: a.path).first { $0.name == "Citrus" }?.colorIndex == orangeColor)
+        check("Tag rename: renamed colour tag replaces it in the list",
+              TagStore.shared.tags.contains { $0.name == "Citrus" } && !TagStore.shared.tags.contains { $0.name == "Orange" })
+        await browser.renameTag("Citrus", to: "Final")
+        check("Tag rename: onto an existing name doesn't duplicate",
+              TagStore.tagNames(of: a).filter { $0 == "Final" }.count == 1)
+        await browser.renameTag("Final", to: "Orange")
+        browser.goBack()
     }
 
     // MARK: - Everything else a Windows Explorer user does
