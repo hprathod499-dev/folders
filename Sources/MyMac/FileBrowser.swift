@@ -1197,7 +1197,7 @@ final class AppState: ObservableObject {
 
     func close(_ tab: FileBrowser) {
         guard tabs.count > 1 else {
-            NSApp.keyWindow?.performClose(nil)
+            WindowActions.close()
             return
         }
         guard let i = tabs.firstIndex(where: { $0.id == tab.id }) else { return }

@@ -65,7 +65,9 @@ struct PinnedFolders: View {
                 .offset(y: dragging == url ? dragOffset : 0)
                 .zIndex(dragging == url ? 1 : 0)
                 .shadow(color: .black.opacity(dragging == url ? 0.35 : 0), radius: 6, y: 2)
-                .gesture(reorderGesture(url), including: locked ? .none : .all)
+                // Desktop: only the drag is switched off (.subviews keeps its click, hover and
+                // right-click working); `.none` would switch off every gesture on the row.
+                .gesture(reorderGesture(url), including: locked ? .subviews : .all)
         }
     }
 
@@ -143,7 +145,7 @@ struct SidebarRow: View {
     var folderURL: URL?
     var depth = 0
     var pinned = false
-    /// Desktop: fixed at the top, shown with a lock instead of a pin.
+    /// Desktop: its place is fixed at the top (it still opens, accepts drops and has its menu).
     var locked = false
     var expandable = false
     var expanded = false
@@ -173,18 +175,13 @@ struct SidebarRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 2)
-            if locked {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(Theme.secondary)
-                    .padding(.trailing, 7)
-                    .help("Desktop always stays at the top")
-            } else if pinned {
+            if pinned {
                 Image(systemName: "pin.fill")
                     .font(.system(size: 10))
                     .rotationEffect(.degrees(45))
                     .foregroundStyle(Theme.secondary)
                     .padding(.trailing, 6)
+                    .help(locked ? "Desktop always stays at the top" : "Drag to rearrange")
             }
         }
         .padding(.leading, CGFloat(depth) * 14 + 2)

@@ -4,23 +4,35 @@ import SwiftUI
 /// Folders' own colour scheme: graphite (dark) or paper (light), with the accent colour
 /// chosen in Customise (green by default).
 enum Theme {
-    static let strip = dynamic(0x141312, 0xEAE8E4)
-    static let chrome = dynamic(0x1F1D1B, 0xF6F5F2)
-    static let content = dynamic(0x191817, 0xFFFFFF)
-    static let field = dynamic(0x2B2926, 0xFFFFFF)
-    static let fieldBorder = dynamic(0x3A3632, 0xD6D3CE)
-    static let hover = dynamic(0xFFFFFF, 0x000000, 0.06, 0.05)
+    // Each colour: dark, light, then (optionally) the Colourful theme's own colour and opacity.
+    static let strip = dynamic(0x141312, 0xEAE8E4, colourful: (0x150E2C, 1))
+    static let chrome = dynamic(0x1F1D1B, 0xF6F5F2, colourful: (0x21173F, 1))
+    static let content = dynamic(0x191817, 0xFFFFFF, colourful: (0x1A1235, 1))
+    static let field = dynamic(0x2B2926, 0xFFFFFF, colourful: (0x2D2157, 1))
+    static let fieldBorder = dynamic(0x3A3632, 0xD6D3CE, colourful: (0x4C3B8F, 1))
+    static let hover = dynamic(0xFFFFFF, 0x000000, 0.06, 0.05, colourful: (0xC9B8FF, 0.10))
     static let selected = accented(darkAlpha: 0.18, lightAlpha: 0.16)
     static let selectedHover = accented(darkAlpha: 0.25, lightAlpha: 0.24)
-    static let divider = dynamic(0xFFFFFF, 0x000000, 0.08, 0.10)
-    static let text = dynamic(0xFFFFFF, 0x161616, 0.92, 1)
-    static let secondary = dynamic(0xFFFFFF, 0x161616, 0.60, 0.62)
-    static let tertiary = dynamic(0xFFFFFF, 0x161616, 0.35, 0.32)
+    static let divider = dynamic(0xFFFFFF, 0x000000, 0.08, 0.10, colourful: (0xB9A6FF, 0.18))
+    static let text = dynamic(0xFFFFFF, 0x161616, 0.92, 1, colourful: (0xFFFFFF, 0.95))
+    static let secondary = dynamic(0xFFFFFF, 0x161616, 0.60, 0.62, colourful: (0xE6DCFF, 0.72))
+    static let tertiary = dynamic(0xFFFFFF, 0x161616, 0.35, 0.32, colourful: (0xE6DCFF, 0.42))
     static let accent = accented(darkAlpha: 1, lightAlpha: 1, deepInLight: true)
     static let onAccent = dynamic(0x111111, 0xFFFFFF)
-    static let barTrack = dynamic(0xFFFFFF, 0x000000, 0.12, 0.10)
+    static let barTrack = dynamic(0xFFFFFF, 0x000000, 0.12, 0.10, colourful: (0xC9B8FF, 0.16))
     /// Icon colour for places in the sidebar and title bar, and for folders.
     static let brand = Color(nsColor: NSColor(name: nil) { _ in nsColor(CurrentAccent.value.icon) })
+
+    /// Colourful theme: each place gets its own bright colour (other themes use the accent).
+    static func place(_ colourfulHex: UInt32) -> Color {
+        Color(nsColor: NSColor(name: nil) { _ in
+            nsColor(CurrentTheme.colourful ? colourfulHex : CurrentAccent.value.icon)
+        })
+    }
+
+    /// The Colourful theme's stripe under the tabs.
+    static let rainbow: [Color] = [0xF472B6, 0xFB923C, 0xFACC15, 0x34D399, 0x38BDF8, 0xA78BFA]
+        .map { Color(nsColor: nsColor($0)) }
 
     /// The chosen accent: its bright shade (dark mode) or deep shade (light mode, for text and buttons).
     private static func accented(darkAlpha: CGFloat, lightAlpha: CGFloat, deepInLight: Bool = false) -> Color {
@@ -37,8 +49,10 @@ enum Theme {
     }
     static let danger = Color(hex: 0xE5484D)
 
-    static func dynamic(_ dark: UInt32, _ light: UInt32, _ darkAlpha: CGFloat = 1, _ lightAlpha: CGFloat = 1) -> Color {
+    static func dynamic(_ dark: UInt32, _ light: UInt32, _ darkAlpha: CGFloat = 1, _ lightAlpha: CGFloat = 1,
+                        colourful: (UInt32, CGFloat)? = nil) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
+            if CurrentTheme.colourful, let (hex, alpha) = colourful { return nsColor(hex, alpha: alpha) }
             let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
             let hex = isDark ? dark : light
             return NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
@@ -65,7 +79,8 @@ struct ContentView: View {
         .foregroundStyle(Theme.text)
         .ignoresSafeArea(.container, edges: .top)
         .preferredColorScheme(prefs.colorScheme)
-        .id(prefs.accent)
+        // Redraw everything when the accent or theme changes (colours are read while drawing).
+        .id("\(prefs.accent.rawValue)-\(prefs.theme.rawValue)")
         .overlay(alignment: .bottomTrailing) {
             if let progress = ops.progress {
                 ProgressCard(progress: progress)
@@ -172,6 +187,7 @@ struct BrowserView: View {
 
 struct TabStrip: View {
     @EnvironmentObject private var app: AppState
+    @ObservedObject private var prefs = Prefs.shared
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 2) {
@@ -195,6 +211,13 @@ struct TabStrip: View {
         .background(HideTrafficLights())
         .background(WindowDragArea())
         .background(Theme.strip)
+        .overlay(alignment: .bottom) {
+            if prefs.theme == .colourful {
+                LinearGradient(colors: Theme.rainbow, startPoint: .leading, endPoint: .trailing)
+                    .frame(height: 2)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }
 
@@ -203,8 +226,8 @@ struct CaptionButtons: View {
     var body: some View {
         // On the left, in the Mac's order: Close, Minimize, Full screen.
         HStack(spacing: 6) {
-            CaptionButton(symbol: "xmark", help: "Close", danger: true) {
-                WindowActions.mainWindow?.performClose(nil)
+            CaptionButton(symbol: "xmark", help: "Close (Folders keeps running; ⌘Q quits)", danger: true) {
+                WindowActions.close()
             }
             CaptionButton(symbol: "minus", help: "Minimize", danger: false) {
                 WindowActions.minimize()
@@ -243,9 +266,39 @@ struct CaptionButton: View {
 /// Minimize / full screen / close for the app's main window (not a menu or dialog).
 @MainActor
 enum WindowActions {
+    /// The browser window, remembered so it can be brought back after it's been hidden.
+    static weak var browserWindow: NSWindow?
+
     static var mainWindow: NSWindow? {
+        if let w = browserWindow, w.isVisible { return w }
         if let w = NSApp.mainWindow, !(w is NSPanel) { return w }
         return NSApp.windows.first { $0.isVisible && !($0 is NSPanel) && !$0.isSheet && $0.contentView != nil }
+    }
+
+    /// Closing the window keeps Folders running in the background (like Finder): the window is
+    /// only hidden, with its tabs kept. The Dock icon, opening Folders again or opening a folder
+    /// from another app brings it back. Quit with ⌘Q.
+    static func close() {
+        guard let window = browserWindow ?? mainWindow else { return }
+        if window.styleMask.contains(.fullScreen) {
+            var token: NSObjectProtocol?
+            token = NotificationCenter.default.addObserver(forName: NSWindow.didExitFullScreenNotification,
+                                                           object: window, queue: .main) { _ in
+                if let token { NotificationCenter.default.removeObserver(token) }
+                window.orderOut(nil)
+            }
+            window.toggleFullScreen(nil)
+        } else {
+            window.orderOut(nil)
+        }
+    }
+
+    /// Brings the browser window back (after closing or minimizing).
+    static func show() {
+        guard let window = browserWindow else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     /// macOS can't minimize a full-screen window, so leave full screen first (Windows has no such limit).
@@ -264,42 +317,20 @@ enum WindowActions {
         window.toggleFullScreen(nil)
     }
 
-    /// Tries a real minimize; if macOS refuses (it does for this window style on some setups),
-    /// hides the app instead, which looks the same: the window goes away and the Dock icon brings it back.
+    /// A real minimize, with macOS's animation into the Dock.
+    /// The Mac's own minimize button stays hidden (that's fine for macOS). Don't make it see-through
+    /// (alphaValue 0) instead: macOS refuses to minimize a window whose minimize button is transparent.
+    /// Hiding the app is only a last resort if macOS still doesn't start the minimize.
     private static func minimizeOrHide(_ window: NSWindow) {
+        window.standardWindowButton(.miniaturizeButton)?.alphaValue = 1   // undo older builds' see-through button
         var started = false
         let token = NotificationCenter.default.addObserver(forName: NSWindow.willMiniaturizeNotification,
                                                            object: window, queue: .main) { _ in started = true }
-        miniaturize(window)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            NotificationCenter.default.removeObserver(token)
-            if !started && !window.isMiniaturized {
-                isMinimizing = false
-                NSApp.hide(nil)
-            }
-        }
-    }
-
-    /// macOS won't minimize a window whose own minimize button is hidden (we hide the Mac buttons
-    /// so the tabs can start at the edge), so show it for that moment and hide it again afterwards.
-    private static func miniaturize(_ window: NSWindow) {
-        // Keep the (invisible) button present until the window comes back from the Dock;
-        // hiding it again mid-animation makes macOS cancel the minimize.
-        let button = window.standardWindowButton(.miniaturizeButton)
-        button?.alphaValue = 0
-        button?.isHidden = false
-        isMinimizing = true
-        var token: NSObjectProtocol?
-        token = NotificationCenter.default.addObserver(forName: NSWindow.didDeminiaturizeNotification,
-                                                       object: window, queue: .main) { _ in
-            if let token { NotificationCenter.default.removeObserver(token) }
-            MainActor.assumeIsolated {
-                isMinimizing = false
-                button?.isHidden = true
-                button?.alphaValue = 1
-            }
-        }
         window.miniaturize(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NotificationCenter.default.removeObserver(token)
+            if !started && !window.isMiniaturized { NSApp.hide(nil) }
+        }
     }
 
     /// While true, the Mac buttons are left alone (see HideTrafficLights).
@@ -316,6 +347,7 @@ struct HideTrafficLights: NSViewRepresentable {
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             guard let window else { return }
+            WindowActions.browserWindow = window
             hide(window)
             tokens.forEach(NotificationCenter.default.removeObserver)
             tokens = [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification,

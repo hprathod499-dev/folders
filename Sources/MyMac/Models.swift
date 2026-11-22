@@ -298,12 +298,13 @@ struct Place: Identifiable, Hashable {
     static let standard: [Place] = {
         let fm = FileManager.default
         let wanted: [(String, String, Color, FileManager.SearchPathDirectory)] = [
-            ("Desktop", "menubar.dock.rectangle", Theme.brand, .desktopDirectory),
-            ("Music", "music.note", Theme.brand, .musicDirectory),
-            ("Downloads", "arrow.down.circle.fill", Theme.brand, .downloadsDirectory),
-            ("Documents", "doc.text.fill", Theme.brand, .documentDirectory),
-            ("Pictures", "photo.fill", Theme.brand, .picturesDirectory),
-            ("Videos", "film.fill", Theme.brand, .moviesDirectory),
+            // Colourful theme colours: sky, pink, mint, amber, lavender, coral.
+            ("Desktop", "menubar.dock.rectangle", Theme.place(0x38BDF8), .desktopDirectory),
+            ("Music", "music.note", Theme.place(0xF472B6), .musicDirectory),
+            ("Downloads", "arrow.down.circle.fill", Theme.place(0x34D399), .downloadsDirectory),
+            ("Documents", "doc.text.fill", Theme.place(0xFBBF24), .documentDirectory),
+            ("Pictures", "photo.fill", Theme.place(0xA78BFA), .picturesDirectory),
+            ("Videos", "film.fill", Theme.place(0xFB7185), .moviesDirectory),
         ]
         return wanted.compactMap { name, symbol, color, dir in
             fm.urls(for: dir, in: .userDomainMask).first.map {
@@ -346,15 +347,21 @@ extension Color {
 // MARK: - Settings (View › Show and Folder Options)
 
 enum AppTheme: String, CaseIterable, Identifiable {
-    case dark, light, system
+    case dark, light, colourful, system
     var id: String { rawValue }
     var title: String {
         switch self {
         case .dark: return "Dark"
         case .light: return "Light"
+        case .colourful: return "Colourful"
         case .system: return "Use system setting"
         }
     }
+}
+
+/// The theme in use right now, read by the theme's colours each time they're drawn.
+enum CurrentTheme {
+    nonisolated(unsafe) static var colourful = false
 }
 
 enum SidePane: String { case none, details, preview }
@@ -459,15 +466,16 @@ final class Prefs: ObservableObject {
 
     var colorScheme: ColorScheme? {
         switch theme {
-        case .dark: return .dark
+        case .dark, .colourful: return .dark
         case .light: return .light
         case .system: return nil
         }
     }
 
     func applyAppearance() {
+        CurrentTheme.colourful = theme == .colourful
         switch theme {
-        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        case .dark, .colourful: NSApp.appearance = NSAppearance(named: .darkAqua)
         case .light: NSApp.appearance = NSAppearance(named: .aqua)
         case .system: NSApp.appearance = nil
         }

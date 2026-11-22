@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 app.newTab(.folder(target))
             }
         }
+        WindowActions.show()
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -64,8 +65,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {}
 
-    /// Like Windows: closing the window quits the app.
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Folders keeps running when its window is closed (like Finder); ⌘Q quits.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Clicking the Dock icon, or opening Folders again, brings the window back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { WindowActions.show() }
+        return true
+    }
 
     /// MYMAC_TEST_MINIMIZE=probe: tries each way of minimizing a normal window and reports which works.
     private func testMinimizeIfRequested(_ env: [String: String]) {
@@ -90,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + t) {
                 guard let w = WindowActions.mainWindow ?? AppDelegate.testedWindow else { print("MINIMIZE no window"); return }
                 AppDelegate.testedWindow = w
-                print("MINIMIZE try \(attempt.0): active=\(NSApp.isActive) key=\(w.isKeyWindow) main=\(w.isMainWindow) full=\(w.styleMask.contains(.fullScreen)) behavior=\(w.collectionBehavior.rawValue) level=\(w.level.rawValue)")
+                let button = w.standardWindowButton(.miniaturizeButton)
+                print("MINIMIZE try \(attempt.0): active=\(NSApp.isActive) key=\(w.isKeyWindow) main=\(w.isMainWindow) full=\(w.styleMask.contains(.fullScreen)) behavior=\(w.collectionBehavior.rawValue) level=\(w.level.rawValue) style=\(String(w.styleMask.rawValue, radix: 16)) miniaturizable=\(w.styleMask.contains(.miniaturizable)) button=\(button == nil ? "none" : "hidden:\(button!.isHidden) enabled:\(button!.isEnabled)") class=\(type(of: w)) delegate=\(w.delegate.map { String(describing: type(of: $0)) } ?? "nil") isMiniaturizable=\(w.isMiniaturizable) sheet=\(w.attachedSheet != nil) children=\(w.childWindows?.count ?? 0) modal=\(NSApp.modalWindow != nil) parent=\(w.parent != nil) allWindows=\(NSApp.windows.map { "\(type(of: $0)):\($0.isVisible ? "v" : "-")" })")
                 attempt.1(w)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + t + 2.2) {
@@ -101,7 +109,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.unhide(nil)
             }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0 + Double(tries.count) * 4.0 + 1) { exit(0) }
+        // Close keeps the app running; the Dock icon brings the window back with its tabs.
+        let closeAt = 5.0 + Double(tries.count) * 4.0 + 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + closeAt) {
+            AppState.shared.newTab(.thisMac)
+            WindowActions.close()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + closeAt + 1.5) {
+            let w = WindowActions.browserWindow
+            print("CLOSE result: window hidden=\(w?.isVisible == false) appStillRunning=true terminateAfterLastWindow=\(NSApp.delegate?.applicationShouldTerminateAfterLastWindowClosed?(NSApp) ?? true)")
+            _ = NSApp.delegate?.applicationShouldHandleReopen?(NSApp, hasVisibleWindows: false)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + closeAt + 3) {
+            print("REOPEN result: window visible=\(WindowActions.browserWindow?.isVisible == true) tabs kept=\(AppState.shared.tabs.count >= 2)")
+            exit(0)
+        }
     }
 
     /// Development aid: MYMAC_SNAPSHOT=/path.png saves a picture of the window, then quits.
