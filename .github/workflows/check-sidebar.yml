@@ -1,0 +1,23 @@
+name: Check sidebar installer
+on:
+  push:
+    branches: [build/sidebar-fix-7b14971]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: ./make-dmg.sh
+      - run: |
+          codesign --verify --deep --strict build/Folders.app
+          hdiutil verify Download/Folders.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Folders-sidebar-fix
+          path: Download/Folders.dmg
+      - run: MYMAC_SELFTEST="$RUNNER_TEMP/folders-selftest" build/Folders.app/Contents/MacOS/MyMac
