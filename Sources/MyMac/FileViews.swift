@@ -5,9 +5,6 @@ import SwiftUI
 // MARK: - Navigation pane
 
 struct SidebarView: View {
-    @EnvironmentObject private var browser: FileBrowser
-    @ObservedObject private var pins = PinStore.shared
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 1) {
@@ -22,10 +19,6 @@ struct SidebarView: View {
                 SidebarDivider()
 
                 PinnedFolders(displayName: displayName)
-                ForEach(pins.recent, id: \.self) { url in
-                    SidebarRow(title: displayName(url), icon: AnyView(FolderGlyph(url: url)),
-                               location: .folder(url), folderURL: url)
-                }
 
                 SidebarDivider()
 
