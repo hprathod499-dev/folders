@@ -39,17 +39,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Folders sent by macOS (e.g. opened from another app or Terminal) open in Folders:
-    /// the first one in the starting Home tab, the rest in new tabs.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // "Show in Finder" / "Reveal" from other apps (Telegram, browsers, …) and Folders' own
+        // Show in Finder arrive as this Apple event when Folders is the Mac's file viewer.
+        NSAppleEventManager.shared().setEventHandler(
+            self, andSelector: #selector(handleReveal(_:withReplyEvent:)),
+            forEventClass: AEEventClass(kAEMiscStandards), andEventID: AEEventID(kAEMakeObjectsVisible))
+    }
+
+    /// Folders sent by macOS (e.g. opened from another app or Terminal) open in Folders;
+    /// a file opens its folder with the file selected.
     func application(_ sender: NSApplication, open urls: [URL]) {
+        MainActor.assumeIsolated {
+            Self.show(urls.map { FileBrowser.isFolder($0) ? ($0, []) : ($0.deletingLastPathComponent(), [$0]) })
+        }
+    }
+
+    /// Reveal: opens the folder each file is in, with the files selected (like Finder).
+    @objc func handleReveal(_ event: NSAppleEventDescriptor, withReplyEvent reply: NSAppleEventDescriptor) {
+        let urls = Self.fileURLs(in: event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject)))
+        MainActor.assumeIsolated {
+            guard !urls.isEmpty else { WindowActions.show(); return }
+            Self.show(urls.map { ($0.deletingLastPathComponent(), [$0]) })
+        }
+    }
+
+    /// File URLs from an Apple event's list (URLs, aliases or paths).
+    static func fileURLs(in descriptor: NSAppleEventDescriptor?) -> [URL] {
+        guard let descriptor else { return [] }
+        if descriptor.descriptorType == DescType(typeAEList) {
+            guard descriptor.numberOfItems > 0 else { return [] }
+            return (1...descriptor.numberOfItems).flatMap { fileURLs(in: descriptor.atIndex($0)) }
+        }
+        if let url = descriptor.fileURLValue { return [url] }
+        if let url = descriptor.coerce(toDescriptorType: DescType(typeFileURL))?.fileURLValue { return [url] }
+        if let path = descriptor.stringValue, path.hasPrefix("/") { return [URL(fileURLWithPath: path)] }
+        return []
+    }
+
+    /// Opens each folder (reusing a tab already showing it, or the untouched start tab),
+    /// selects the given items in it, and brings the window forward.
+    @MainActor static func show(_ targets: [(folder: URL, select: [URL])]) {
         let app = AppState.shared
-        for (i, url) in urls.enumerated() {
-            let target: URL = FileBrowser.isFolder(url) ? url : url.deletingLastPathComponent()
-            if i == 0, app.tabs.count == 1, app.current.location == .home, !app.current.canGoBack {
-                app.current.go(to: .folder(target))
+        // One tab per folder, keeping the order they came in.
+        var folders: [URL] = []
+        var picks: [URL: [URL]] = [:]
+        for (folder, select) in targets {
+            let key = folder.normalizedFolder
+            if picks[key] == nil { folders.append(key); picks[key] = [] }
+            picks[key]! += select
+        }
+        for (i, folder) in folders.enumerated() {
+            if let open = app.tabs.first(where: { $0.currentURL == folder }) {
+                app.select(open)
+                open.reload()
+            } else if i == 0, app.tabs.count == 1, app.current.location == .home, !app.current.canGoBack {
+                app.current.go(to: .folder(folder))
             } else {
-                app.newTab(.folder(target))
+                app.newTab(.folder(folder))
             }
+            if let select = picks[folder], !select.isEmpty { app.current.select(paths: select.map(\.path)) }
         }
         WindowActions.show()
         NSApp.activate(ignoringOtherApps: true)

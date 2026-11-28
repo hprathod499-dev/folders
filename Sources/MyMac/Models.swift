@@ -505,9 +505,9 @@ final class PinStore: ObservableObject {
             pinned = Place.standard.map(\.url)
         }
         recent = Self.existing(defaults.stringArray(forKey: recentKey) ?? [], folders: true)
-            .filter { !Self.isInICloudDrive($0) }
         keepDesktopFirst()
         favorites = Self.existing(defaults.stringArray(forKey: favoritesKey) ?? [], folders: false)
+        recent = recent.filter { !isShownElsewhere($0) }
     }
 
     private static func existing(_ paths: [String], folders: Bool) -> [URL] {
@@ -524,6 +524,7 @@ final class PinStore: ObservableObject {
         } else {
             pinned.append(folder)
             recent.removeAll { $0 == folder }
+            dropRecentsShownElsewhere()
             keepDesktopFirst()
         }
         save()
@@ -584,19 +585,29 @@ final class PinStore: ObservableObject {
 
     func noteVisit(_ url: URL) {
         let folder = url.normalizedFolder
-        guard !isPinned(folder), folder != Place.home, folder.path != "/", !Self.isInICloudDrive(folder) else { return }
+        guard !isPinned(folder), folder != Place.home, folder.path != "/", !isShownElsewhere(folder) else { return }
         recent.removeAll { $0 == folder }
         recent.insert(folder, at: 0)
         if recent.count > 5 { recent.removeLast(recent.count - 5) }
         save()
     }
 
-    /// iCloud Drive and its folders already have their own tree in the navigation pane,
-    /// so they're left out of the recent list (no duplicates).
-    private static func isInICloudDrive(_ url: URL) -> Bool {
-        guard let cloud = Place.iCloudDrive?.standardizedFileURL.path else { return false }
+    /// Folders you can already reach from the navigation pane are left out of the recent list
+    /// (no duplicates): anything in iCloud Drive (it has its own tree) or inside a pinned folder
+    /// (e.g. Documents/Codex when Documents is pinned).
+    func isShownElsewhere(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
-        return path == cloud || path.hasPrefix(cloud + "/")
+        func inside(_ root: URL) -> Bool {
+            let rootPath = root.standardizedFileURL.path
+            return path == rootPath || path.hasPrefix(rootPath + "/")
+        }
+        if let cloud = Place.iCloudDrive, inside(cloud) { return true }
+        return pinned.contains { inside($0) }
+    }
+
+    /// Pinning a folder removes recent folders that are now inside it.
+    private func dropRecentsShownElsewhere() {
+        recent.removeAll { isShownElsewhere($0) }
     }
 
     private func save() {
